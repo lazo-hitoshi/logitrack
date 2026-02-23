@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LogiTrack メインメニュー</title>
+  <style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 0; background-color: #f0f2f5; color: #333; }
+    header { background-color: #003366; color: white; padding: 20px; text-align: center; }
+    h1 { margin: 0; font-size: 1.8rem; }
+    .container { max-width: 600px; margin: 40px auto; padding: 20px; display: grid; gap: 20px; }
+    .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; transition: transform 0.2s; }
+    .card:hover { transform: translateY(-5px); }
+    .card h2 { margin-top: 0; color: #003366; }
+    .btn { display: inline-block; background-color: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 15px; }
+    .btn:hover { background-color: #0056b3; }
+    .btn.disabled { background-color: #ccc; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>LogiTrack 統合管理システム</h1>
+</header>
+
+<div class="container">
+  <div class="card">
+    <h2>🚢 港入港スケジュール</h2>
+    <p>相馬港の入港予定・実績を管理します。</p>
+    <a href="/soma-port/" class="btn">システムを開く</a>
+  </div>
+
+  <div class="card">
+    <h2>📊 データ分析（準備中）</h2>
+    <p>運航データの分析機能は現在準備中です。</p>
+    <span class="btn disabled">Coming Soon</span>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "CSV/印刷ボタンのレイアウト崩れを修正するための、HTML構造の変更とCSSスタイルの微調整プラン。",
+  "updatedAt": "2026-01-14T05:55:25.717244600Z",
+  "version": "15"
+}

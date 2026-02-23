@@ -1,0 +1,25 @@
+# Implementation Plan - Status & Animation
+
+## Goal Description
+Add "積込中" (Loading) and "荷下ろし完了" (Unloading Complete) to the available statuses. Also, implement animation logic so that vehicles in "輸送中" (Transporting) state move automatically on the map.
+
+## Proposed Changes
+
+### UI ([index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html))
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- Add `<option>` tags for "積込中" and "荷下ろし完了" to the `#lot-status` select element.
+
+### Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **Status Colors**: Update [getStatusColor](file:///c:/Users/tiesm/.gemini/antigravity/app.js#288-297) to return appropriate colors for the new statuses.
+- **Kanban Logic**: Update [renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#473-521) to handle the new statuses (grouping "積込中" with "積込待ち" or creating a new section? -> Will map to "積込待ち" column visually but label clearly, or just add logic to ignore for now if column doesn't exist).
+- **Animation**:
+    - Inside [drawMap](file:///c:/Users/tiesm/.gemini/antigravity/app.js#207-268) loop, iterate through `state.batches`.
+    - If `status` is '輸送中', increment `progress` by a small amount (e.g., 0.05).
+    - If `progress` >= 100, clamp it or auto-change status (optional, but let's just clamp for now).
+
+## Verification Plan
+### Manual Verification
+- Select "積込中" in the edit modal and save.
+- Observe the map: "輸送中" items should slowly move from start to destination.
+- Check that "荷下ろし完了" items show the correct status text.

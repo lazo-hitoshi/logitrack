@@ -1,0 +1,35 @@
+# 不具合修正の実装計画
+
+## 目標
+ユーザーが報告した「ダンプを押しても出ない」「2つ出てしまう」という不具合を解消する。
+また、[app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js) 内に不適切な配置（スコープ外）にある関数が存在するため、これを修正して「親船（Parent Ship）」の連動機能が正しく動作するようにする。
+
+## 現状の分析
+1.  **「2つ出てしまう」現象**: [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html) 内の「現在地」入力欄において、`form-group` div が誤って二重にネストされており、ラベルが2回表示されている可能性が高い。
+2.  **「ダンプを押しても出ない」現象**: [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js) において、[renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#565-614) 関数が `DOMContentLoaded` ブロックの外側に重複して定義されている。後方で定義された「親船情報を表示する新しいロジック」はスコープ外のため `state` にアクセスできず、実際には動作していない（呼び出されていないか、エラーになる）。このため、意図した表示更新が行われていない可能性がある。
+
+## 提案する変更
+
+### 1. [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html) の修正
+- 「現在地（積込港など）」の入力フィールドにおける、不要な `div.form-group` のネストと重複した `<label>` を削除する。
+
+### 2. [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js) の修正
+- ファイル末尾にある [renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#565-614) 関数（親船表示ロジックを含む版）を、`DOMContentLoaded` イベントリスナー内の適切な位置に移動する。
+- 既存の（古い）[renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#565-614) 関数を、この新しい関数で置換する。
+- これにより、「ダンプ」登録時に親船情報が正しくカードに表示されるようになる。
+
+## 検証計画
+
+### 自動テスト
+- 現状、自動テスト環境はないため実施しない。
+
+### 手動検証手順
+1.  **HTML修正の確認**:
+    - 「新規ロット追加」ボタンを押し、登録モーダルを開く。
+    - 「現在地」のラベルが1つだけ表示されていることを確認する（「2つ出る」問題の解消）。
+
+2.  **JS修正の確認**:
+    - 「新規ロット追加」から、種別「ダンプ」を選択してロットを登録する。
+    - （可能であれば親船を選択して登録する）
+    - ダッシュボード上の「ダンプ位置」またはリストに、登録したダンプが表示されることを確認する。
+    - ダンプのカードに「📦 元船: ...」という表示が出るか（親船を選択した場合）を確認する。

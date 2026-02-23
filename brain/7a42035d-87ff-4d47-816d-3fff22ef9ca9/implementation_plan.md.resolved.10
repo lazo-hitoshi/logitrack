@@ -1,0 +1,30 @@
+# 船員人数と備考欄の追加実装
+
+運行の詳細を把握するため、登録フォームに「船員人数」を記録する数値入力欄と、特記事項を記載する「備考欄」を追加します。
+
+## 修正内容
+
+### [Lot Registration Component]
+
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- **船員人数**: `input type="number"` を追加します。
+- **備考欄**: `textarea` を追加し、長文の入力に対応させます。
+
+#### [MODIFY] [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css)
+- 備考（textarea）がフォーム内で適切な高さを持ち、かつ全体のガラスモーフィズムデザインを維持するように調整します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- フォーム送信時に「船員人数」と「備考欄」のデータを取得し、`state.batches` に保存します。
+- 一覧表示（[renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#52-84)）の「ロット管理番号」や「状況」列の周辺にツールチップ等の形で備考を表示し、マウスオーバーで内容を確認できるようにします。
+- 船員人数は「船名」などのラベル近くに表示し、情報の一元化を図ります。
+- 入力フォームのモダンなデザインを適用します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- `state.batches` にデータを追加するロジックを実装します。
+## 検証計画
+### 自動テスト
+- フォーム入力後に `state.batches` の配列長が増加しているかを確認します。
+- テーブルに新しい行が正しくレンダリングされるかを検証します。
+
+### 手動検証
+- ブラウザで実際に「新規登録」を行い、リストに反映されること、およびマップ上に（簡易的に）新しいエンティティが表示されることを確認します。

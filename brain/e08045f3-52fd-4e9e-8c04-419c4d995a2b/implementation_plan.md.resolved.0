@@ -1,0 +1,21 @@
+# Implementation Plan - UI Layout Adjustments
+
+## Goal
+Optimize the UI layout of the "Real-time Monitoring Map" section by reducing the prominence of secondary action buttons (excessively large) and ensuring the map title is clearly visible.
+
+## Proposed Changes
+
+### 1. Style Adjustments ([style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css))
+- **Add `.glass-btn.small` modifier**:
+  - Reduce padding to `6px 12px` (from `8px 16px`).
+  - Reduce font size to `0.75rem` (from `0.8rem`).
+  - Adjust icon gap if necessary.
+
+### 2. HTML Structure ([index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html))
+- **Apply `.small` class**:
+  - Update `export-csv-btn` and `print-btn` to include the new `.small` modifier.
+- **Verify Map Title**:
+  - Ensure the `<h2>` for "リアルタイム監視マップ" is correctly styled (check strictness of existing CSS) and clearly legible.
+
+## Verification
+- User to verify visually that the buttons are less obtrusive and the map title remains clear.

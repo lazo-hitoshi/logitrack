@@ -1,0 +1,38 @@
+# 実装計画: 登録フォームのラベル・項目最適化
+
+## 課題
+「ダンプ運行登録」画面において、「船会社名」「船員人数」といった船舶用の項目が表示されており、ユーザーの混乱を招いている。
+
+## 解決策
+選択された種別（船舶 or ダンプ）に応じて、フォームのラベル文言と表示項目を動的に切り替える。
+
+## 具体的な変更点
+
+### 1. [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+以下の要素にIDを付与する：
+- 「船会社名」のラベル -> `id="label-company"`
+- 「船名 / 車両番号」のラベル -> `id="label-name"`
+- 「船員人数」を含む親div -> `id="crew-field-group"`
+
+### 2. [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+`updateFormLabels(type)` 関数（または既存の [updateFormOptions](file:///c:/Users/tiesm/.gemini/antigravity/app.js#202-262) 内への追記）を実装する。
+
+**ロジック:**
+- **種別が `sea` (船舶) の場合**:
+    - `label-company`: "船会社名"
+    - `label-name`: "船名"
+    - `crew-field-group`: 表示 (display: block/flex)
+- **種別が `land` (ダンプ) の場合**:
+    - `label-company`: "運送会社名"
+    - `label-name`: "車両番号"
+    - `crew-field-group`: 非表示 (display: none)
+
+**呼び出しタイミング:**
+- フォーム初期化時 ([updateFormOptions](file:///c:/Users/tiesm/.gemini/antigravity/app.js#202-262) 内など)
+- 種別プルダウン (`lot-type`) 変更時
+- 「ダンプ登録」/「新規ロット追加」ボタンクリック時
+
+## 検証
+- 「ダンプ登録」ボタン押下時: ラベルが「運送会社名」「車両番号」になり、「船員人数」が消えていること。
+- 「新規ロット追加」ボタン押下 -> 種別「船舶」: 「船会社名」「船名」「船員人数」が表示されること。
+- 同画面で種別を「ダンプ」に変更: その場でラベルと表示が切り替わること。

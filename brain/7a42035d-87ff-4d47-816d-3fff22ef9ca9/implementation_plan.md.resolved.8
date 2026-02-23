@@ -1,0 +1,30 @@
+# 添付資料アップロード機能の実装
+
+チェックボックスによる確認だけでなく、実際のファイルを添付・管理できるように拡張します。
+
+## 修正内容
+
+### [Lot Registration Component]
+
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- 登録フォームの各資料項目に `input type="file"` を追加します。
+- 添付されたファイル名を表示するためのエリアを設けます。
+
+#### [MODIFY] [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css)
+- ファイルアップロード用のモダンなボタン。および選択されたファイル名の表示スタイルを追加します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- ファイル選択時のハンドリング（ファイル名の取得と保持）を実装します。
+- フォーム送信時に、ファイル情報を `state.batches` に保存するように更新します（デモ版のためファイル名のみ保持）。
+- 一覧表示（[renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#46-74)）で、アイコンをクリックすることで添付ファイル名を確認できるように改善します。
+- 入力フォームのモダンなデザインを適用します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- `state.batches` にデータを追加するロジックを実装します。
+## 検証計画
+### 自動テスト
+- フォーム入力後に `state.batches` の配列長が増加しているかを確認します。
+- テーブルに新しい行が正しくレンダリングされるかを検証します。
+
+### 手動検証
+- ブラウザで実際に「新規登録」を行い、リストに反映されること、およびマップ上に（簡易的に）新しいエンティティが表示されることを確認します。

@@ -1,0 +1,44 @@
+# 実装計画: ダンプ登録フィールドの追加
+
+## 課題
+現在の「ダンプ運行登録」フォームには、ユーザーが求めている「ドライバー名」「車両区分」「積載量」「車両関連資料」の入力欄が存在しない。
+
+## 変更内容
+
+### 1. [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+`#add-lot-form` 内に以下のフィールド構造を追加する。
+これらを `<div id="land-specific-fields">` で囲み、既存の船舶用項目（船員など）とは分ける。
+
+- **ドライバー名**: input text
+- **車両区分**: select (大型10t, 中型4t, etc)
+- **積載量**: input text (例: 10t)
+- **車両関連資料**: file input (車検証など)
+
+※ 既存の「船会社」「船名（車両番号）」「備考」はそのまま利用する。
+
+### 2. [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+
+#### 表示切り替えロジック
+[updateFormOptions](file:///c:/Users/tiesm/.gemini/antigravity/app.js#202-278) 関数を拡張：
+- `type === 'land'` の場合:
+    - `#land-specific-fields` を表示。
+    - `#crew-field-group` (船員) を非表示。
+    - `#sea-specific-fields` (もし作成すれば) を非表示。
+- `type === 'sea'` の場合:
+    - `#land-specific-fields` を非表示。
+    - `#crew-field-group` を表示。
+
+#### 自動入力ロジック (Auto-fill)
+`lot-name` (車両番号) の `change` イベントリスナーで：
+- 選択された車両名に対応するマスタデータ (`state.masters.trucks`) を検索。
+- ヒットすれば、ドライバー名、区分、積載量を自動でフォームに入力する。
+
+#### 保存ロジック
+`#add-lot-form` の `submit` イベントで：
+- `type === 'land'` の場合、新フィールドの値も `state.batches` のオブジェクトに保存する。
+
+## 検証
+1. 「ダンプ登録」ボタンを押す。
+2. 画面に「ドライバー名」「車両区分」「積載量」等の欄が増えていることを確認。
+3. マスタ登録済みの車両を選択すると、ドライバー名などが自動で埋まることを確認。
+4. 登録すると、カードやリストには反映されるか？（現状は表示箇所がないため、登録できること自体を確認）。

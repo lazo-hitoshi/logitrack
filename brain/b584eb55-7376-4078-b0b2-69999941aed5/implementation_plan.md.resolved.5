@@ -1,0 +1,33 @@
+# Implementation Plan - Business Rules (3-Day Limit & Destination)
+
+## Goal Description
+1.  **3-Day Removal Rule**: Track how long a ship has been at the landing port. Soil must be removed within 3 days. Display the elapsed time and alert if it exceeds the limit.
+2.  **Destination Consistency**: Since soil from one ship goes to a single landfill, linking a dump truck to a ship should automatically set the truck's destination to match the ship's destination.
+
+## Proposed Changes
+
+### Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **Destination Consistency**:
+    - Add `change` event listener to `#parent-ship-select`.
+    - When a ship is selected, find the ship object.
+    - Copy `ship.site` (Final Landfill) to `#lot-site`.
+    - (Optional) Lock the `#lot-site` field or show a visual cue.
+- **3-Day Rule Tracking**:
+    - Add `arrivalDate` property to mock ship data (set to 1-2 days ago for demo).
+    - In [renderShipTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#450-483):
+        - Calculate days elapsed: [(Now - arrivalDate)](file:///c:/Users/tiesm/.gemini/antigravity/app.js#207-277).
+        - Display "搬出: X日目 / 3日期限" (Removal: Day X / 3 Day Limit).
+        - Style: Green (Safe), Yellow (Day 3), Red (Overdue).
+        - If Overdue and NOT 'Complete', ensure an alert exists (or just rely on the visual indicator for now to avoid spamming alerts).
+
+## Verification Plan
+### Manual Verification
+- **Destination**:
+    - Open "New Lot (Dump)".
+    - Select a Parent Ship.
+    - Verify "Final Landfill Site" field updates automatically to match the ship.
+- **3-Day Rule**:
+    - Observe Ship Cards.
+    - Verify they show the "Day X / 3" indicator.
+    - (Advanced) Edit a ship's data (in code or via console) to make it 4 days old, verify visual warning.

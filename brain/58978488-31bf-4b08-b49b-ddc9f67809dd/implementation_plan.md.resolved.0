@@ -1,0 +1,42 @@
+# Port Info Migration Plan
+
+The goal is to migrate the "Each Port Info" (map settings) functionality into the "New Lot Addition" modal and remove the standalone button. Additionally, we will fix the map rendering to actually use these configured values.
+
+## User Review Required
+> [!IMPORTANT]
+> The current "Each Port Info" settings were not actually updating the map labels due to a bug (hardcoded labels). I will fix this so the settings take effect.
+> The settings fields will be moved to the bottom of the "New Lot Addition" modal.
+
+## Proposed Changes
+
+### UI Changes ([index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html))
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- Remove `open-settings-btn` (The "Each Port Settings" button).
+- Remove `settings-overlay` (The Settings Modal).
+- Add the input fields for Loading Port and Landing Port (Name & Pier) into the `add-lot-form` within `modal-overlay`.
+    - These will be placed in a new `<div class="form-section">` or `<details>` block at the bottom of the form to distinguish them as global settings.
+
+### Logic Changes ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **Map Rendering**: Update [drawMap()](file:///c:/Users/tiesm/.gemini/antigravity/app.js#207-268) to use `state.mapPoints.loadingPort.name` and `landingPort.name` instead of hardcoded strings.
+- **Modal Logic**:
+    - Remove handlers for the old settings modal.
+    - When `open-modal-btn` (New Lot) is clicked:
+        - Populate the new input fields with values from `state.mapPoints`.
+    - When `add-lot-form` is submitted:
+        - Retrieve values from the new input fields.
+        - Update `state.mapPoints` with these values.
+        - Call [saveState()](file:///c:/Users/tiesm/.gemini/antigravity/app.js#185-188) and [drawMap()](file:///c:/Users/tiesm/.gemini/antigravity/app.js#207-268) to reflect changes immediately.
+
+## Verification Plan
+
+### Manual Verification
+1.  **Check UI**: Verify that the "Each Port Settings" button is gone from the dashboard.
+2.  **Open New Lot Modal**: Click "New Lot Addition" and confirm the Port Settings fields appear (pre-filled with current defaults like "積込港", "揚地港").
+3.  **Update Settings**:
+    - Change "Loading Port Name" to "Yokohama".
+    - Change "Landing Port Name" to "Chiba".
+    - Fill in other required Lot fields (or just test the settings update if possible, but the form submits together).
+    - Submit the form.
+4.  **Verify Map**: Check the "Realtime Map" on the dashboard. The markers should now be labeled "Yokohama" and "Chiba".
+5.  **Persistence**: Reload the page and ensure the map labels persist.

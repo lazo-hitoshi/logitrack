@@ -1,0 +1,50 @@
+# Dump Truck Pre-registration & Dispatch Workflow Implementation Plan
+
+## Goal Description
+Implement a two-step workflow for dump trucks:
+1.  **Pre-registration (Entry)**: Register trucks entering the port/system. They enter a "Standby" state (`standby`).
+2.  **Dispatch (Linking)**: Assign these standby trucks to a specific Ship/Operation.
+
+This addresses the user's need to "register beforehand for port entry" and then "build dispatch" based on that info.
+
+## User Review Required
+> [!IMPORTANT]
+> The existing "Dump Master Registration" button will be repurposed into "Dump Entry Registration" (Daily Workflow). A "New Master" creation feature will be integrated into this form or kept as a utility.
+
+## Proposed Changes
+
+### UI Layout ([index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html))
+#### [MODIFY] Truck Tracking View
+*   Add a new Kanban column: **"入場済み / 待機" (Standby)** to the left of "Waiting".
+*   This column will hold trucks that have entered but are not yet assigned to a ship.
+
+#### [MODIFY] Dump Registration Modal (`#truck-modal-overlay`)
+*   Rename title to **"ダンプ入場登録" (Dump Entry Registration)**.
+*   Add a "Select from Master" dropdown to quickly populate truck details.
+*   Remove "Master only" fields provided they are auto-filled.
+
+### Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#516-584)
+*   Render the new `standby` column.
+*   For trucks in `standby`, display a **"配車 (Dispatch)"** button on their card.
+
+#### [MODIFY] `add-truck-form` Handler
+*   Instead of just saving to `masters`, this form will now create a **Active Batch** in `state.batches`.
+*   Status: `standby`.
+*   Type: `land`.
+*   Validation: Ensure the truck isn't already in active batches.
+
+#### [NEW] `assignTruck` Function
+*   Logic to handle the "Dispatch" button click.
+*   Opens the **Lot Registration/Edit Modal** (`#modal-overlay`).
+*   Pre-fills the Truck info.
+*   Forces selection of **Parent Ship** and **Destination**.
+*   On submit, updates status from `standby` to `waiting` (or `loading`) and links the ship.
+
+## Verification Plan
+### Manual Verification
+1.  **Entry**: Click "Dump Registration". Select a truck from master (or enter new). Register.
+2.  **Verify Standby**: Check "Truck Tracking" tab. Ensure truck appears in "Standby" column.
+3.  **Dispatch**: Click "Dispatch" on the standby truck.
+4.  **Link**: Select a Ship. Verify "Site" auto-fills. Submit.
+5.  **Verify Active**: Ensure truck moves to "Waiting" or "Transport" column and shows "Linked to Ship".

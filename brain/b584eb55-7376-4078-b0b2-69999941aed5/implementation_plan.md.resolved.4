@@ -1,0 +1,36 @@
+# Implementation Plan - Document & Lot Linkage
+
+## Goal Description
+1.  **Document Filenames**: Ensure "Analysis Report" and "Proof of Origin" files attached to a lot store and display their actual filenames.
+2.  **Ship-Dump Linkage**: Update the "Parent Ship" selection to identifying ships by their **Lot Number** (ID) + Name, ensuring the link is clear and unambiguous.
+
+## Proposed Changes
+
+### Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **[updateFormOptions](file:///c:/Users/tiesm/.gemini/antigravity/app.js#318-396)**:
+    - Update `parent-ship-select` population logic.
+    - Option Text: `${s.name} (${s.id})` - Displaying Lot ID makes it specific.
+    - Option Value: `${s.id}`.
+- **Submit Handler**:
+    - **Files**:
+        - For `#attach-analysis-file`, push `{ name: file.name, type: 'analysis', label: '分析表' }`.
+        - For `#attach-cert-file`, push `{ name: file.name, type: 'proof', label: '証明書' }`.
+    - **Parent Ship**:
+        - Store `parentShipId` from the select value.
+        - Find the ship object to store `parentShipName` (for easier display) or just look it up during render. Let's store `parentShipId` and render it by looking it up.
+- **[renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#484-541)**:
+    - Look up the parent ship in `state.batches` or `state.history` using `batch.parentShipId`.
+    - Display: "📦 元船: Name (LotID)".
+- **[renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#417-449)**:
+    - Render document badges using `doc.name` as title/tooltip.
+
+## Verification Plan
+### Manual Verification
+- Open "New Lot Registration" -> Select "Dump".
+- Check "Parent Ship" dropdown: Should see "ShipName (LOT-XXXX)".
+- Select a ship.
+- Attach "test_analysis.pdf".
+- Register.
+- Check "Dump Location" (Truck Tracking): Should see "📦 元船: ShipName (LOT-XXXX)".
+- Check List: Hover over doc icon, should see "test_analysis.pdf".

@@ -1,0 +1,19 @@
+{
+  "projects": {},
+  "targets": {
+    "unkou-final": {
+      "hosting": {
+        "soma": [
+          "unkou-final-soma"
+        ],
+        "unkou-final": [
+          "unkou-final"
+        ],
+        "unkou-final-port-schedule": [
+          "unkou-final-port-schedule"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

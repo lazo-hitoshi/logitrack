@@ -1,0 +1,181 @@
+ 740:                     localLots: localLots.length,
+ 741:                     remoteLots: remoteLots.length,
+ 742:                     mergedLots: state.batches.length,
+ 743:                     localHistory: localHist.length,
+ 744:                     remoteHistory: remoteHist.length,
+ 745:                     mergedHistory: state.history.length
+ 746:                 });
+ 747: 
+ 748:                 // masters がFirestoreに無い/不足なら、ローカルのmastersを同期
+ 749:                 firestoreUpsertMastersDebounced();
+ 750:                 return true;
+ 751:             } catch (e) {
+ 752:                 console.error('[Firestore] load error:', e);
+ 753:                 return false;
+ 754:             }
+ 755:         })();
+ 756: 
+ 757:         return firestoreLoadPromise;
+ 758:     }
+ 759: 
+ 760:     // Firestore初期化（設定が入っていれば有効化）
+ 761:     initFirestore();
+ 762: 
+ 763:     function saveState() {
+ 764:         localStorage.setItem('dump_truck_system_state', JSON.stringify(state));
+ 765:         window.state = state; // window.stateも更新
+ 766:     }
+ 767: 
+ 768:     // --- Map Drawing Logic (2 Maps for 2 Ships) ---
+ 769:     const canvases = [];
+ 770:     const contexts = [];
+ 771: 
+ 772:     // マップ初期化関数
+ 773:     function initMaps() {
+ 774:         const containers = [
+ 775:             document.getElementById('map-canvas-1'),
+ 776:             document.getElementById('map-canvas-2')
+ 777:         ];
+ 778:         
+ 779:         console.log('initMaps開始:', {
+ 780:             container1: containers[0] ? '存在' : '存在しない',
+ 781:             container2: containers[1] ? '存在' : '存在しない',
+ 782:             container1Size: containers[0] ? `${containers[0].clientWidth}x${containers[0].clientHeight}` : 'なし',
+ 783:             container2Size: containers[1] ? `${containers[1].clientWidth}x${containers[1].clientHeight}` : 'なし'
+ 784:         });
+ 785:         
+ 786:         containers.forEach((container, index) => {
+ 787:             if (container) {
+ 788:                 // 既存のcanvasを削除
+ 789:                 const existingCanvas = container.querySelector('canvas');
+ 790:                 if (existingCanvas) {
+ 791:                     existingCanvas.remove();
+ 792:                 }
+ 793:                 
+ 794:                 const canvas = document.createElement('canvas');
+ 795:                 const ctx = canvas.getContext('2d');
+ 796:                 if (!ctx) {
+ 797:                     console.error(`マップ${index + 1}のcanvas contextが取得できません`);
+ 798:                     return;
+ 799:                 }
+ 800:                 
+ 801:                 // canvasのスタイルを設定
+ 802:                 canvas.style.width = '100%';
+ 803:                 canvas.style.height = '100%';
+ 804:                 canvas.style.display = 'block';
+ 805:                 container.appendChild(canvas);
+ 806:                 canvases[index] = canvas;
+ 807:                 contexts[index] = ctx;
+ 808:                 
+ 809:                 // サイズを即座に設定（デフォルト値を使用）
+ 810:                 const width = container.clientWidth || 400;
+ 811:                 const height = container.clientHeight || 450;
+ 812:                 canvas.width = width;
+ 813:                 canvas.height = height;
+ 814:                 console.log(`マップ${index + 1}のcanvasを作成しました: ${width}x${height}`);
+ 815:             } else {
+ 816:                 console.warn(`マップ${index + 1}のコンテナが見つかりません`);
+ 817:             }
+ 818:         });
+ 819:         
+ 820:         // マップ描画を開始
+ 821:         if (canvases.filter(c => c).length > 0) {
+ 822:             // 少し遅延させてから描画（DOM更新を確実にするため）
+ 823:             setTimeout(() => {
+ 824:                 // 再度サイズを確認して設定
+ 825:                 canvases.forEach((canvas, idx) => {
+ 826:                     if (canvas) {
+ 827:                         const container = document.getElementById(`map-canvas-${idx + 1}`);
+ 828:                         if (container) {
+ 829:                             const width = container.clientWidth || 400;
+ 830:                             const height = container.clientHeight || 450;
+ 831:                             if (canvas.width !== width || canvas.height !== height) {
+ 832:                                 canvas.width = width;
+ 833:                                 canvas.height = height;
+ 834:                                 console.log(`マップ${idx + 1}のサイズを更新: ${width}x${height}`);
+ 835:                             }
+ 836:                         }
+ 837:                     }
+ 838:                 });
+ 839:                 drawMap();
+ 840:             }, 100);
+ 841:         } else {
+ 842:             console.warn('canvasが作成されていません');
+ 843:         }
+ 844:     }
+ 845:     
+ 846:     // 初期化を実行（DOMが読み込まれた後に実行）
+ 847:     function tryInitMaps() {
+ 848:         const containers = [
+ 849:             document.getElementById('map-canvas-1'),
+ 850:             document.getElementById('map-canvas-2')
+ 851:         ];
+ 852:         if (containers[0] && containers[1]) {
+ 853:             initMaps();
+ 854:             return true;
+ 855:         }
+ 856:         return false;
+ 857:     }
+ 858:     
+ 859:     // 即座に試行
+ 860:     if (!tryInitMaps()) {
+ 861:         // DOMがまだ読み込まれていない場合は、遅延実行
+ 862:         setTimeout(() => {
+ 863:             if (!tryInitMaps()) {
+ 864:                 // さらに遅延して再試行
+ 865:                 setTimeout(() => {
+ 866:                     tryInitMaps();
+ 867:                 }, 500);
+ 868:             }
+ 869:         }, 100);
+ 870:     }
+ 871: 
+ 872:     window.addEventListener('resize', () => {
+ 873:         canvases.forEach((_, i) => resizeCanvas(i));
+ 874:     });
+ 875: 
+ 876:     function resizeCanvas(index) {
+ 877:         const mapContainers = [
+ 878:             document.getElementById('map-canvas-1'),
+ 879:             document.getElementById('map-canvas-2')
+ 880:         ];
+ 881:         if (!mapContainers[index] || !canvases[index]) {
+ 882:             console.warn(`resizeCanvas: マップ${index + 1}のコンテナまたはcanvasが見つかりません`);
+ 883:             return;
+ 884:         }
+ 885:         const width = mapContainers[index].clientWidth || 400;
+ 886:         const height = mapContainers[index].clientHeight || 450;
+ 887:         canvases[index].width = width;
+ 888:         canvases[index].height = height;
+ 889:         console.log(`マップ${index + 1}のサイズを設定: ${width}x${height}`);
+ 890:     }
+ 891: 
+ 892:     // 船ごとにグループ化してマップに割り当て
+ 893:     function getShipGroups() {
+ 894:         const ships = state.batches.filter(b => b.type === 'sea' && (b.status === '輸送中' || b.status === '積込中' || b.status === '積込待ち'));
+ 895:         const trucks = state.batches.filter(b => b.type === 'land' && (b.status === '輸送中' || b.status === '積込中' || b.status === '積込待ち'));
+ 896:         
+ 897:         // 船を2つのグループに分ける（最大2隻まで）
+ 898:         const groups = [[], []];
+ 899:         ships.forEach((ship, i) => {
+ 900:             if (i < 2) {
+ 901:                 groups[i].push(ship);
+ 902:                 // この船に関連するダンプを追加
+ 903:                 const relatedTrucks = trucks.filter(t => t.parentShipId === ship.id);
+ 904:                 groups[i].push(...relatedTrucks);
+ 905:             }
+ 906:         });
+ 907:         
+ 908:         return groups;
+ 909:     }
+ 910: 
+ 911:     // 進捗を計算（出港予定日または配車日+午前7時を基準）
+ 912:     function calculateProgress(batch) {
+ 913:         const now = new Date();
+ 914:         
+ 915:         if (batch.type === 'sea') {
+ 916:             // 船：出港予定日を基準
+ 917:             if (!batch.departureDate) return batch.progress || 0;
+ 918:             const departureDate = new Date(batch.departureDate + 'T00:00:00');
+ 919:             const daysSinceDeparture = (now.getTime() - departureDate.getTime()) / (1000 * 60 * 60 * 24);
+ 920:             // 出港から3日で到着と仮定

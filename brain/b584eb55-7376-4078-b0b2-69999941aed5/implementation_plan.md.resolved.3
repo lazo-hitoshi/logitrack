@@ -1,0 +1,27 @@
+# Implementation Plan - Document Linking
+
+## Goal Description
+Ensure that when "Analysis Report" (分析表) or "Proof of Origin" (発生証明) files are attached to a lot (especially for Dump trucks), the actual filename is stored and displayed, rather than just a generic label.
+
+## Proposed Changes
+
+### Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **Submit Handler**:
+    - For `attach-analysis-file`, if present, push `{ name: file.name, type: 'analysis', label: '分析表' }`.
+    - For `attach-cert-file`, if present, push `{ name: file.name, type: 'proof', label: '証明書' }`.
+    - (Keep existing truck docs logic but use filename there too).
+- **Render Logic ([renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#417-449))**:
+    - Iterate through `batch.docs`.
+    - Use the stored object to render the badge.
+    - Title attribute: `doc.name` (The filename).
+    - Display text or Icon: `doc.label` or specific icon.
+
+## Verification Plan
+### Manual Verification
+- Open "New Lot Registration".
+- Select "Dump" (Land).
+- Attach "sample_analysis.pdf" to "Analysis Report".
+- Register.
+- Hover over the "📊" icon in the list.
+- Verify it says "sample_analysis.pdf" (not just "分析表").

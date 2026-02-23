@@ -1,0 +1,42 @@
+# Implementation Plan - Align Vehicle Data with AppSheet
+
+[Goal Description]
+Update the vehicle (dump truck) data structure and registration forms to match the user's AppSheet source.
+Spreadsheet Columns identified: `TruckID`, `車両ナンバー`, `車種`, `積載容量m3`, `会社名`, `ドライバー名`.
+
+## User Review Required
+> [!IMPORTANT]
+> The spreadsheet uses "積載容量m3" (Volume) instead of "積載量(t)" (Weight). I will update the labels to reflect "m3" or generic "Capacity".
+> "車種" (Vehicle Type) in the sheet contains values like "10t", "7t", but also "大型ダンプ". I will verify if this maps to the `category` field.
+
+## Proposed Changes
+
+### Logic Layer
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- Update [fetchAppSheetMasters](file:///c:/Users/tiesm/.gemini/antigravity/app.js#91-113) to map:
+    - `TruckID` -> `id` (new field)
+    - `車両ナンバー` -> `name`
+    - `車種` -> `category`
+    - `積載容量m3` -> `capacity` (store as is, e.g., "10")
+    - `会社名` -> `company`
+    - `ドライバー名` -> `driver`
+- Update [sendToAppSheet](file:///c:/Users/tiesm/.gemini/antigravity/app.js#114-133) to include these fields when sending data back (if applicable).
+- Update [updateFormOptions](file:///c:/Users/tiesm/.gemini/antigravity/app.js#292-370) and event listeners to auto-fill these new fields (`m3`, `id`) when a truck is selected.
+
+### UI Layer
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- Update "Dump Truck Master Registration" modal (`#add-truck-form`):
+    - Add input for `TruckID` (optional or auto-gen if manual).
+    - Change "Capacity" label to "積載容量 (m3)".
+    - Ensure "Vehicle Type" (`category`) allows free text or matches the spreadsheet examples ("10t", "7t", "大型ダンプ").
+- Update "New Lot Registration" modal (`#add-lot-form`) for Dump specific fields:
+    - Match valid fields (Driver, Capacity m3, etc.).
+
+## Verification Plan
+### Automated Tests
+- None (Visual verification).
+
+### Manual Verification
+- Open "Dump Registration" modal and check if fields match the spreadsheet.
+- Register a new truck and verify it appears in the list with correct details.
+- Check if selecting a truck in "New Lot" auto-fills the driver and capacity correctly.

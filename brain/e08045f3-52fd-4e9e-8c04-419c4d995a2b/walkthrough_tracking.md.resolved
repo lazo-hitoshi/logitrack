@@ -1,0 +1,29 @@
+# ウォークスルー - 船舶・ダンプ追跡詳細画面
+
+船舶およびダンプの運行状況を詳細に確認できる画面を実装しました。
+
+## 実装内容
+1.  **船舶位置画面**:
+    - グリッド形式で、稼働中の全船舶をカード表示。
+    - 現在地、進捗率、積荷情報を表示。
+2.  **ダンプ位置画面**:
+    - **カンバン方式**（積込待ち / 輸送中 / 荷卸し中）を採用し、車両のステータスを可視化。
+    - 各レーンに車両カードを表示し、どの車両がどの状態にあるか一覧可能に。
+
+## 検証手順
+ブラウザで [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html) を開き、以下の動作をご確認ください。
+
+### 1. 船舶位置タブ
+- メニューから「船舶位置」を選択。
+- 「第一福和丸」などの船舶カードが表示されていることを確認。
+- 進捗バーが表示され、現在のステータス（航海中など）が表示されているか確認。
+
+### 2. ダンプ位置タブ
+- メニューから「ダンプ位置」を選択。
+- 3つのカラム（積込待ち、輸送中、荷卸し中）が表示されていることを確認。
+- 登録されているダンプトラックのカードが、それぞれの状態のカラムに配置されていることを確認。
+
+## 修正ファイル
+- [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html) (View構造の更新)
+- [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css) (カード、カンバンスタイルの追加)
+- [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js) ([renderShipTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#298-331), [renderTruckTracking](file:///c:/Users/tiesm/.gemini/antigravity/app.js#332-379) の実装)

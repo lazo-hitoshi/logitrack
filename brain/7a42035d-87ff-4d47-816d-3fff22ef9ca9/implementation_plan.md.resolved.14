@@ -1,0 +1,25 @@
+# データ出力機能と永続化の実装
+
+本システムに入力したデータの保存場所を明確にし、外部出力（CSV、印刷）およびデータの永続化を実現します。
+
+## データの保存場所について
+本システムはサーバーを利用しないフロントエンド完結型のため、データは**ブラウザの内部ストレージ（LocalStorage）**に保存されます。
+- ブラウザを閉じてもデータは保持されます。
+- 他のPCや別のブラウザとは同期されません。
+- ブラウザのキャッシュを完全に削除するとデータが消えるため、重要なデータは定期的にCSVでバックアップすることを推奨します。
+
+## 修正内容
+
+### [Data Persistence & Export Component]
+
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- 運行一覧セクションのヘッダーに「CSV出力」と「印刷」ボタンを追加します。
+- 印刷時にサイドバーや操作ボタンなどを非表示にするための `print-only` / `no-print` クラス用CSSを追加または整備します。
+
+#### [MODIFY] [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css)
+- `@media print` メディアクエリを追加し、印刷時のレイアウトを最適化（背景透過の解除、不要要素の非表示など）します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **永続化**: `state` の変更を監視し、`localStorage` に自動保存するロジック、および起動時の読み込みロジックを実装します。
+- **CSV出力**: `state.batches` をCSV形式に変換し、ファイルとしてダウンロードさせる関数を実装します。
+- **印刷**: `window.print()` を呼び出すシンプルな関数を実装します。

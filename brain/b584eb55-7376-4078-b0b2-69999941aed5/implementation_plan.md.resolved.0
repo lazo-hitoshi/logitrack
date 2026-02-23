@@ -1,0 +1,37 @@
+# Implementation Plan - Edit, Files, and Alerts
+
+## Goal Description
+Enable users to edit existing batches, fix the file attachment UI which currently doesn't reflect selection, and implement basic alert generation logic when batch statuses change.
+
+## User Review Required
+> [!NOTE]
+> File uploads will be simulated by storing filenames in local state, as there is no backend server to handle actual file storage.
+
+## Proposed Changes
+
+### Logic & UI ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **File Attachment**:
+    - Add `change` event listeners to file inputs to update the text of their corresponding `<span class="file-name">`.
+    - Update form submission to read from these inputs.
+- **Edit Functionality**:
+    - Update [renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#406-438) to add `data-id` to the Detail/Edit button.
+    - Create `editBatch(id)` function:
+        - Helper to find batch by ID.
+        - Populate form fields (company, name, status, etc.) with batch data.
+        - Store `editingBatchId` in a variable or dataset.
+        - Open modal.
+    - Update `add-lot-form` submit handler:
+        - Check if editing. If so, update existing object in `state.batches`.
+        - If new, `unshift` to array.
+- **Alert Logic**:
+    - Create `createAlert(message)` helper.
+    - In the submit handler, if editing and `status` has changed, call `createAlert`.
+        - Example: "Vehicle [Name] changed status to [Status]"
+
+## Verification Plan
+### Manual Verification
+- **File Upload**: Click file input, select file, verify text changes from "未選択" to filename. Register and verify "docs" icon appears.
+- **Edit**: Click "Edit/Detail", change status (e.g. to "Completed"), save. Verify list updates.
+- **Alerts**: After changing status, check "Recent Alerts" section for a new entry.

@@ -1,0 +1,42 @@
+# 実装計画: AppSheet連携
+
+## 目的
+Web画面で登録されたダンプ運行データを、ユーザーのAppSheetアプリにも自動的に登録（同期）する。
+
+## 実装内容
+
+### 1. 設定値の定義 (`app.js`)
+AppSheet APIを利用するために必要な設定値を保持する定数を定義する。
+ユーザーには、以下の値を埋めてもらう必要がある。
+- `AppId`: AppSheetのアプリID
+- `AccessKey`: APIアクセスキー
+- `TableName`: 保存先のテーブル名
+
+### 2. マスタデータの取得 (Read)
+AppSheet側で管理されている「車両マスタ」や「ドライバーマスタ」を取得し、Web画面の選択肢として利用する。
+これにより、ドライバーが勝手な名前を入力することを防ぎ、AppSheet側のセキュリティ設定（改ざん防止）を活かすことができる。
+
+- **取得関数**: `fetchAppSheetMasters()`
+- **処理**: `fetch` APIで "Find" アクション等を送り、車両リストを取得。
+- **反映**: 取得したデータを `state.masters.trucks` 等に上書きする。
+
+### 3. データの送信 (Write)
+`sendToAppSheet(data)` 関数を作成する。
+- **入力**: フォームの登録データオブジェクト
+- **処理**: `fetch` APIを使用して、AppSheetのエンドポイント `https://api.appsheet.com/api/v2/apps/{appId}/tables/{tableName}/Action` にPOSTリクエストを送る。
+- **Action**: "Add" アクションを指定する。
+- **データマッピング**: Webアプリのフィールド名 (driver, capacityなど) を、AppSheet側のカラム名に合わせる必要がある。
+
+### 4. 保存処理への組み込み
+`#add-lot-form` の `submit` イベントリスナー内、`state.batches.unshift(newBatch)` の直後に、`sendToAppSheet(newBatch)` を呼び出す処理を追加する。
+
+## ユーザーへの依頼事項
+実装後、以下の情報をソースコード（`app.js`の先頭付近）に入力してもらう必要がある。
+1.  App ID
+2.  Access Key
+3.  Table Name
+（これらの取得方法は別途案内する）
+
+## 検証
+- ソースコードにダミーの設定値が入った状態で、登録ボタンを押してもエラーでアプリが止まらないこと（コンソールエラーは許容）。
+- 正しいクレデンシャルが入力されれば、AppSheet側にデータが追加されること。

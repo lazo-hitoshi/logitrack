@@ -1,0 +1,22 @@
+{
+  "hosting": [
+    {
+      "target": "unkou-final",
+      "public": "hosting_main",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "unkou-final-port-schedule",
+      "public": "hosting_main",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "soma",
+      "public": "hosting_public",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/soma-port/index.html" }]
+    }
+  ]
+}

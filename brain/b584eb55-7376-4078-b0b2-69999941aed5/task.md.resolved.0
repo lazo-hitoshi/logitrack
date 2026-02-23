@@ -1,0 +1,20 @@
+# Tasks
+
+- [/] Planning & Setup <!-- id: 0 -->
+    - [x] Analyze codebase <!-- id: 1 -->
+    - [/] Create implementation plan <!-- id: 2 -->
+- [ ] Enable Basic File Attachment UI <!-- id: 3 -->
+    - [ ] Add event listeners to file inputs to show selected filenames <!-- id: 4 -->
+    - [ ] Update `submit` handler to include selected files in `newBatch.docs` <!-- id: 5 -->
+- [ ] Implement Edit Functionality <!-- id: 6 -->
+    - [ ] Add "Edit" button to batch list row (or enable "Detail" button) <!-- id: 7 -->
+    - [ ] Refactor modal toggle to accept `batchId` for editing <!-- id: 8 -->
+    - [ ] Populate form fields with existing data when editing <!-- id: 9 -->
+    - [ ] Handle "Update" logic in form submission <!-- id: 10 -->
+- [ ] Clarify & Implement Alert Logic <!-- id: 11 -->
+    - [ ] Add logic to generate alerts on status changes (e.g. "Load Complete") <!-- id: 12 -->
+    - [ ] Explain mechanism to user <!-- id: 13 -->
+- [ ] Verification <!-- id: 14 -->
+    - [ ] Verify file selection works <!-- id: 15 -->
+    - [ ] Verify editing a batch works <!-- id: 16 -->
+    - [ ] Verify new alerts appear on status change <!-- id: 17 -->

@@ -1,0 +1,26 @@
+# Implementation Plan - Document Linking
+
+## Goal Description
+Ensure that when a file is attached during the "New Lot Registration" for a dump truck, the actual filename is linked to the lot data, and it is displayed correctly in the dashboard list.
+
+## Proposed Changes
+
+### Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **Submit Handler**:
+    - Retrieve the file object from `#lot-truck-docs`.
+    - Instead of pushing `{ name: '車両関連資料' }`, push `{ name: file.name, type: 'vehicle_doc' }`.
+- **Render Logic ([renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#417-449))**:
+    - Update the `docBadges` mapping.
+    - If `doc.type === 'vehicle_doc'` (or name check), render a `📎` icon.
+    - Add a `title` attribute to the badge so hovering shows the filename.
+
+## Verification Plan
+### Manual Verification
+- Open "New Lot Registration".
+- Select "Dump" (Land).
+- Attach a file (e.g., "shaken.pdf") to "Vehicle Related Documents".
+- Register.
+- In the dashboard list, check the "Type/Documents" column.
+- Verify a 📎 icon appears.
+- Hover over the icon and verify it correctly displays "shaken.pdf".

@@ -1,0 +1,42 @@
+# Modal Layout Redesign Plan
+
+The objective is to redesign the "New Lot Registration" modal to improve usability. The current single-column layout is too long. We will implement a responsive 2-column grid layout.
+
+## User Review Required
+> [!NOTE]
+> I will switch to a **horizontal 2-column layout**. The form will be wider, but much shorter vertically, reducing the need to scroll.
+
+## Proposed Changes
+
+### CSS Changes ([style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css))
+#### [MODIFY] [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css)
+- Increase `.modal-content` max-width to allow side-by-side columns (e.g., `800px` or `900px`).
+- Create a `.form-grid-layout` class using `display: grid; grid-template-columns: 1fr 1fr;`.
+- Use media queries to revert to single column on mobile.
+
+### HTML Structure ([index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html))
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- Wrap the form content in a wrapper div with the new grid class.
+- **Left Column**:
+    - Basic Info (Lot ID)
+    - Lot Type (Ship/Dump)
+    - Company & Unit Name (Ship Name/Car Number)
+    - Capacity/Crew Info
+    - Plant Name
+- **Right Column**:
+    - Location Info (Current Location, Destination)
+    - Status & Soil Type
+    - Documents & Notes
+- **Full Width Bottom**:
+    - Map Settings (Port Info) - keep this at the bottom but maybe in a collapsed/compact row.
+    - Action Buttons.
+
+## Verification Plan
+
+### Manual Verification
+1.  **Open Modal**: Click "New Lot Addition" (`+ 新規ロット追加`).
+2.  **Check Layout**:
+    - Verify the modal is wider.
+    - Verify fields are split into two logical columns.
+    - Check that "Ship" vs "Dump" toggle still correctly shows/hides the relevant specific fields without breaking the grid.
+3.  **Responsive Check**: (Optional) Resize window to see if it wraps correctly (though user is on desktop).

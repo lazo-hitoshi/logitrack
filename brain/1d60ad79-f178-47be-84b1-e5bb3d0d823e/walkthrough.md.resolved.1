@@ -1,0 +1,34 @@
+# Walkthrough - Vehicle Data Implementation
+
+## Changes
+### LogiTrack Web App
+#### [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- **Dump Registration Modal (`#add-truck-form`)**:
+    - Added `TruckID` input field (auto-generated or manual).
+    - Renamed "Capacity" to "積載容量 (m3)".
+    - Updated "Vehicle Type" options to match spreadsheet (e.g., "10t", "7t", "大型ダンプ").
+- **Lot Registration Modal (`#add-lot-form`)**:
+    - Renamed "Capacity" to "積載容量 (m3)" for dump trucks.
+
+#### [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- **Data Mapping**:
+    - Updated [fetchAppSheetMasters](file:///c:/Users/tiesm/.gemini/antigravity/app.js#91-114) to map `TruckID`, `積載容量m3`, and `車種` columns.
+    - Updated [sendToAppSheet](file:///c:/Users/tiesm/.gemini/antigravity/app.js#115-135) to include these fields in the payload.
+- **Logic**:
+    - Updated `add-truck-form` to save the new fields.
+    - Updated `add-lot-form` to use the new fields when auto-filling from a selected truck.
+
+## Verification Results
+### Manual Verification
+- [x] **Dump Registration**: 
+    - Verify `TruckID` field appears.
+    - Verify "Capacity" is now "積載容量 (m3)".
+    - Verify "Vehicle Type" dropdown has "10t", "7t", etc.
+- [x] **Lot Registration**:
+    - Selecting a truck auto-fills the m3 capacity and correct vehicle type.
+
+### Vehicle Master Sync
+- [x] **Sync Functionality**: 
+    - When a new truck is added via the Web App, [sendMasterToAppSheet](file:///c:/Users/tiesm/.gemini/antigravity/app.js#136-147) is called.
+    - The payload matches the AppSheet Vehicle Master columns (`TruckID`, `車両ナンバー`, etc.).
+    - Console logs "Truck Master synced to AppSheet" on success.

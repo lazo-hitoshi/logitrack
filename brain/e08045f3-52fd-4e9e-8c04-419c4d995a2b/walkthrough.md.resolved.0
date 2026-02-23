@@ -1,0 +1,18 @@
+# Walkthrough - UI Layout Adjustments
+
+I have completed the UI adjustments to improve the layout balance of the monitoring map.
+
+## Changes
+1.  **Reduced Button Size**: The "CSV Export" and "Print" buttons now use a new `.small` style variant, making them less obtrusive.
+2.  **Map Title**: Verified that the title "リアルタイム監視マップ" is present and follows the header hierarchy.
+
+## Verification Steps
+Please open the [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html) file in your browser to verify the following:
+
+1.  **Check the "Real-time Monitoring Map" (リアルタイム監視マップ) section.**
+2.  **Verify Buttons**: The "CSV出力" and "印刷" buttons should be smaller than the "Add New Lot" buttons at the top of the dashboard.
+3.  **Verify Layout**: The smaller buttons should allow the map title to stand out more clearly.
+
+## Files Modified
+- [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css) (Added `.glass-btn.small` style)
+- [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html) (Applied `.small` class to buttons)

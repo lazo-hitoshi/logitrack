@@ -1,0 +1,61 @@
+# 依存関係
+node_modules/
+.pnp/
+.pnp.js
+
+# ビルド出力
+dist/
+build/
+.next/
+out/
+
+# 環境変数（機密情報）
+.env
+.env.local
+.env.*.local
+*.env
+
+# ログファイル
+logs/
+*.log
+npm-debug.log*
+
+# OS生成ファイル
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE設定
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# キャッシュ
+.cache/
+.parcel-cache/
+.firebase/
+
+# バックアップファイル（大きすぎるため）
+*.zip
+*.bak
+*.backup
+
+# 一時ファイル
+*.tmp
+*.temp
+
+# Firebase関連の機密情報
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebaserc.backup
+
+# 検索インデックス（大きいファイル）
+search_initialized_all.txt
+
+# ブラウザ録画
+browser_recordings/
+
+# 履歴フォルダ（IDE自動生成）
+.history/

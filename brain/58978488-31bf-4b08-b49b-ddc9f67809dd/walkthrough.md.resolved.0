@@ -1,0 +1,27 @@
+# Port Info Migration Walkthrough
+
+The "Each Port Info" settings have been migrated from a standalone modal to the "New Lot Registration" form. This standardizes the workflow and fixes a bug where map labels were not updating.
+
+## Changes
+
+### 1. Dashboard UI
+- **Removed**: The "Each Port Settings" button (`各港の設定`) has been removed from the map header.
+- **Goal**: Simplify the dashboard and consolidate input actions.
+
+### 2. New Lot Registration Form
+- **Added**: A new section "**⚓ Map Display Settings (Port Info)**" has been added to the bottom of the form.
+- **Fields**:
+    - **Loading Port Name**: Custom name for the start point (e.g., "Yokohama").
+    - **Landing Port Name**: Custom name for the end point (e.g., "Chiba").
+- **Behavior**: These values are pre-filled with the current settings when you open the modal.
+
+### 3. Logic & Persistence
+- **Map Update**: The map now correctly reads these values. Changing them in the form and clicking "Register" will immediately update the map labels.
+- **Persistence**: These settings are saved to `localStorage` along with the batch data.
+
+## key Verification Steps
+1.  Open the "New Lot Addition" modal (`+ 新規ロット追加`).
+2.  Scroll to the bottom to find the "Map Display Settings" section.
+3.  Change the "Loading Port Name" to something unique (e.g., "TEST PORT").
+4.  Submit the form (you can fill dummy data for other required fields).
+5.  Observe the Realtime Map: The starting point label should now say "TEST PORT".

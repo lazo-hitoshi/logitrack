@@ -1,0 +1,29 @@
+# Implementation Plan - Navigation & New Views
+
+## Goal
+Implement functionality to switch between "Dashboard", "Ship Tracking", "Truck Tracking", and "History" screens using the sidebar menu. Create the basic layout and functionality for these new screens (starting with History).
+
+## Proposed Changes
+
+### 1. HTML Structure ([index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html))
+- **Add View Containers**: Create hidden `div` containers for each new view alongside the existing `#dashboard-view`.
+  - `#ship-tracking-view`
+  - `#truck-tracking-view`
+  - `#history-view`
+- **History View Layout**: Add a table for past records and a search filter.
+
+### 2. Styling ([style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css))
+- **Utility Classes**: Ensure `.hidden` class works correctly for hiding views.
+- **Table Styles**: Reuse existing table styles for the History view.
+
+### 3. Logic ([app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js))
+- **Navigation Handler**:
+  - Add event listeners to sidebar links (`.nav-item`).
+  - Implement a function `switchView(viewId)` to hide all views and show the selected one.
+  - Update the `active` class on the sidebar menu.
+- **History Logic**:
+  - Implement rendering for the history table (filtering completed batches).
+
+## Verification Plan
+- Click each menu item (Dashboard, Ship, Truck, History) and verify the main content area updates accordingly.
+- Verify that the "History" view displays data (we can mock some completed data vs active data).

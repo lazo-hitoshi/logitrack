@@ -1,0 +1,30 @@
+# 船舶・ロットごとの個別監視機能の実装
+
+リアルタイム監視マップを、特定の船舶やロットに絞り込んで監視できるように拡張します。
+
+## 修正内容
+
+### [Monitoring Map Component]
+
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- マップのヘッダー部分に、監視対象を選択するプルダウン（「全ロット表示」＋各船舶名）を追加します。
+
+#### [MODIFY] [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css)
+- 監視対象セレクタのデザインを調整し、マップの視認性を邪魔しないように配置します。
+- 選択されたロットを強調するためのアニメーション効果（グロー効果など）を強化します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- セレクタの変更に応じて `state.selectedLot` を更新するイベントリスナーを追加します。
+- キャンバスの描画処理（[draw()](file:///c:/Users/tiesm/.gemini/antigravity/app.js#233-322)）を修正し、選択されたロットのみを強調、または単独表示するフィルタリング機能を実装します。
+- ロットが選択されている場合、そのロットの現在地や積荷情報をマップ上に詳細表示するようにします。
+- 入力フォームのモダンなデザインを適用します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- `state.batches` にデータを追加するロジックを実装します。
+## 検証計画
+### 自動テスト
+- フォーム入力後に `state.batches` の配列長が増加しているかを確認します。
+- テーブルに新しい行が正しくレンダリングされるかを検証します。
+
+### 手動検証
+- ブラウザで実際に「新規登録」を行い、リストに反映されること、およびマップ上に（簡易的に）新しいエンティティが表示されることを確認します。

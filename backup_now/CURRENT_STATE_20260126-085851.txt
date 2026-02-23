@@ -1,0 +1,23 @@
+=== SNAPSHOT 20260126-085851 ===
+
+Algorithm       Hash                                                                   Path
+---------       ----                                                                   ----
+SHA256          2B0CE13EA01D7FA6715D04CDB4811FC8AECA042E25D2CBA2843C67F1AF535F3F       D:\Antigravity\antigrav…
+
+
+Algorithm       Hash                                                                   Path
+---------       ----                                                                   ----
+SHA256          99DD4224E8B390AF447D0CAA6F33A80F5C10ED979C37D7422EA00AC4B83D0425       D:\Antigravity\antigrav…
+
+
+Algorithm       Hash                                                                   Path
+---------       ----                                                                   ----
+SHA256          D9E52407DC40B60EB389683EFD5E9542A8E94FEF1A17FE301D7506A0755CF399       D:\Antigravity\antigrav…
+
+
+FullName                                           Length LastWriteTime
+--------                                           ------ -------------
+D:\Antigravity\antigravity\hosting_main\index.html  23155 2026/01/26 8:52:06
+D:\Antigravity\antigravity\hosting_main\app.js     238647 2026/01/26 8:31:00
+D:\Antigravity\antigravity\hosting_main\style.css   21990 2026/01/22 14:34:17
+

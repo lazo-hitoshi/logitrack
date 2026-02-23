@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "ダンプ登録（ロット登録）時の不具合修正およびコードのクリーンアップ。\nHTMLの重複要素の削除と、app.jsのスコープ外関数の統合を行う。",
+  "updatedAt": "2026-01-14T11:36:40.718978Z"
+}

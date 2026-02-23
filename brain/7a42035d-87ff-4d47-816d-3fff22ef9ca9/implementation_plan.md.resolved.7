@@ -1,0 +1,29 @@
+# 残土種別と添付資料項目の追加機能実装
+
+新規ロット登録時に、運搬する残土の種類と、提出済みの添付資料を記録できるように拡張します。
+
+## 修正内容
+
+### [Lot Registration Component]
+
+#### [MODIFY] [index.html](file:///c:/Users/tiesm/.gemini/antigravity/index.html)
+- **残土の種類**: `select` 要素を追加。「再生土」「建設発生残土」「改良土」から選択可能にします。
+- **添付資料**: `checkbox` グループを追加。「分析表」「建設残土発生証明」の提出状況を確認できるようにします。
+
+#### [MODIFY] [style.css](file:///c:/Users/tiesm/.gemini/antigravity/style.css)
+- 追加項目のレイアウトを調整。チェックボックスのラベル配置などをモダンに整えます。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- フォーム送信時に新規項目を取得し、`state.batches` に保存するロジックを更新します。
+- 一覧表示（[renderBatches](file:///c:/Users/tiesm/.gemini/antigravity/app.js#46-69)）で、種別や添付状況をアイコン等で確認できるように微調整します。
+- 入力フォームのモダンなデザインを適用します。
+
+#### [MODIFY] [app.js](file:///c:/Users/tiesm/.gemini/antigravity/app.js)
+- `state.batches` にデータを追加するロジックを実装します。
+## 検証計画
+### 自動テスト
+- フォーム入力後に `state.batches` の配列長が増加しているかを確認します。
+- テーブルに新しい行が正しくレンダリングされるかを検証します。
+
+### 手動検証
+- ブラウザで実際に「新規登録」を行い、リストに反映されること、およびマップ上に（簡易的に）新しいエンティティが表示されることを確認します。

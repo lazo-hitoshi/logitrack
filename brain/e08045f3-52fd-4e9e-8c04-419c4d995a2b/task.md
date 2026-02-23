@@ -1,0 +1,24 @@
+# Tasks
+
+- [x] Create Implementation Plan <!-- id: 0 -->
+- [x] Modify `style.css` to add small button variant <!-- id: 1 -->
+- [x] Modify `index.html` to use small buttons and check title <!-- id: 2 -->
+- [x] Verify changes <!-- id: 3 -->
+- [x] Plan Navigation & Views Implementation <!-- id: 4 -->
+- [x] Implement View Switching Logic in `app.js` & `index.html` <!-- id: 5 -->
+- [x] Implement "History" View Structure & Logic <!-- id: 6 -->
+- [x] Implement "Ship/Truck Tracking" View Placeholders <!-- id: 7 -->
+- [x] Verify Navigation Flow <!-- id: 8 -->
+- [x] Plan History Data Implementation <!-- id: 9 -->
+- [x] Implement History Data Generation & Storage in `app.js` <!-- id: 10 -->
+- [x] Implement History Table Rendering Logic <!-- id: 11 -->
+- [x] Verify History Display <!-- id: 12 -->
+- [x] Plan Tracking Views Implementation <!-- id: 13 -->
+- [x] Implement Ship Tracking View (UI & Logic) <!-- id: 14 -->
+- [x] Implement Truck Tracking View (UI & Logic) <!-- id: 15 -->
+- [x] Verify Tracking Views <!-- id: 16 -->
+- [x] Plan Linking Truck to Ship Load <!-- id: 17 -->
+- [x] Implement UI for Linking Truck to Ship <!-- id: 18 -->
+- [x] Implement Logic to Display Origin Ship in Truck Tracking <!-- id: 19 -->
+- [x] Verify Linkage <!-- id: 20 -->
+- [x] Create Operation Manual <!-- id: 21 -->
