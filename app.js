@@ -5078,3 +5078,197 @@ window.addEventListener('beforeunload', () => {
         clearInterval(autoStatusUpdaterInterval);
     }
 });
+
+// ========================================
+// データエクスポート/インポート機能
+// ========================================
+// 複数人での作業時にデータを共有・バックアップするための機能
+
+// 全データをJSONファイルとしてエクスポート
+window.exportAllData = function() {
+    const dataState = window.state;
+    if (!dataState) {
+        alert('データが見つかりません。');
+        return;
+    }
+    
+    const exportData = {
+        exportedAt: new Date().toISOString(),
+        version: '1.0',
+        batches: dataState.batches || [],
+        masters: dataState.masters || {},
+        mapPoints: dataState.mapPoints || {},
+        alerts: dataState.alerts || [],
+        truckMaster: dataState.truckMaster || [],
+        shipPresets: dataState.shipPresets || []
+    };
+    
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `LogiTrack_Data_${timestamp}.json`;
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log('[DataExport] エクスポート完了:', filename);
+    alert(`データをエクスポートしました: ${filename}`);
+};
+
+// JSONファイルからデータをインポート
+window.importAllData = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importData = JSON.parse(event.target.result);
+                
+                if (!importData.batches || !importData.masters) {
+                    alert('無効なデータ形式です。');
+                    return;
+                }
+                
+                const confirmMsg = `以下のデータをインポートしますか？\n\n` +
+                    `- ロット数: ${importData.batches.length}\n` +
+                    `- エクスポート日時: ${importData.exportedAt || '不明'}\n\n` +
+                    `※現在のデータは上書きされます。`;
+                
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                // データを復元
+                const dataState = window.state;
+                if (dataState) {
+                    dataState.batches = importData.batches || [];
+                    dataState.masters = importData.masters || {};
+                    dataState.mapPoints = importData.mapPoints || dataState.mapPoints;
+                    dataState.alerts = importData.alerts || [];
+                    dataState.truckMaster = importData.truckMaster || [];
+                    dataState.shipPresets = importData.shipPresets || [];
+                    
+                    // 保存と再描画
+                    if (typeof saveState === 'function') {
+                        saveState();
+                    }
+                    if (typeof renderBatches === 'function') {
+                        renderBatches();
+                    }
+                    if (typeof renderTruckTracking === 'function') {
+                        renderTruckTracking();
+                    }
+                    if (typeof renderEntryRegistered === 'function') {
+                        renderEntryRegistered();
+                    }
+                    if (typeof renderHistory === 'function') {
+                        renderHistory();
+                    }
+                    if (typeof updateFormOptions === 'function') {
+                        updateFormOptions();
+                    }
+                    
+                    console.log('[DataImport] インポート完了');
+                    alert('データをインポートしました。');
+                }
+            } catch (err) {
+                console.error('[DataImport] エラー:', err);
+                alert('データの読み込みに失敗しました: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    
+    input.click();
+};
+
+// Firestoreからデータをエクスポート（バックアップ用）
+window.exportFromFirestore = async function() {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+        alert('Firestoreが初期化されていません。');
+        return;
+    }
+    
+    try {
+        const db = firebase.firestore();
+        const exportData = {
+            exportedAt: new Date().toISOString(),
+            version: '1.0',
+            source: 'firestore'
+        };
+        
+        // lotsコレクションを取得
+        const lotsSnapshot = await db.collection('lots').get();
+        exportData.lots = [];
+        lotsSnapshot.forEach(doc => {
+            exportData.lots.push({ id: doc.id, ...doc.data() });
+        });
+        
+        // mastersコレクションを取得
+        const mastersSnapshot = await db.collection('masters').get();
+        exportData.masters = {};
+        mastersSnapshot.forEach(doc => {
+            exportData.masters[doc.id] = doc.data();
+        });
+        
+        const jsonStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `LogiTrack_Firestore_${timestamp}.json`;
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log('[FirestoreExport] エクスポート完了:', filename);
+        alert(`Firestoreデータをエクスポートしました: ${filename}\nロット数: ${exportData.lots.length}`);
+    } catch (err) {
+        console.error('[FirestoreExport] エラー:', err);
+        alert('Firestoreからのエクスポートに失敗しました: ' + err.message);
+    }
+};
+
+// ヘルプ：使用可能なバックアップコマンドを表示
+window.backupHelp = function() {
+    console.log(`
+========================================
+LogiTrack バックアップ機能
+========================================
+
+【データエクスポート/インポート】
+  window.exportAllData()     - ローカルデータをJSONファイルにエクスポート
+  window.importAllData()     - JSONファイルからデータをインポート
+  window.exportFromFirestore() - Firestoreからデータをエクスポート
+
+【自動ステータス更新】
+  window.forceCheckStatuses() - ステータスを手動でチェック
+
+【使い方】
+  1. ブラウザのコンソール（F12）を開く
+  2. 上記のコマンドを入力してEnter
+
+========================================
+`);
+    alert('バックアップコマンドの一覧をコンソールに表示しました。\nF12でコンソールを確認してください。');
+};
+
+console.log('[LogiTrack] バックアップ機能が利用可能です。window.backupHelp() でヘルプを表示できます。');
