@@ -4962,6 +4962,29 @@ function checkAndUpdateStatuses() {
     let updated = false;
     const movedToHistory = [];
     
+    // createdAtがない古いデータに日付を設定する補助関数
+    function getOrEstimateCreatedAt(batch) {
+        if (batch.createdAt) {
+            return new Date(batch.createdAt);
+        }
+        // ロットIDから日付を推測 (例: LOT-20260114-001 → 2026-01-14)
+        if (batch.id && batch.id.match(/LOT-(\d{8})-/)) {
+            const dateStr = batch.id.match(/LOT-(\d{8})-/)[1];
+            const year = dateStr.substring(0, 4);
+            const month = dateStr.substring(4, 6);
+            const day = dateStr.substring(6, 8);
+            const estimated = new Date(`${year}-${month}-${day}T00:00:00`);
+            if (!isNaN(estimated.getTime())) {
+                // 推測した日付をバッチに保存
+                batch.createdAt = estimated.toISOString();
+                console.log(`[AutoStatusUpdater] createdAtを推測: ${batch.id} → ${batch.createdAt}`);
+                return estimated;
+            }
+        }
+        // 推測できない場合はnullを返す
+        return null;
+    }
+    
     dataState.batches.forEach(batch => {
         if (!batch || batch.status === 'completed' || batch.status === 'history') {
             return; // 既に完了/履歴のものはスキップ
@@ -4971,14 +4994,17 @@ function checkAndUpdateStatuses() {
         // 【船舶】3日後に運搬履歴へ自動移動
         // ========================================
         if (batch.type === 'sea') {
-            const createdAt = batch.createdAt ? new Date(batch.createdAt) : null;
+            const createdAt = getOrEstimateCreatedAt(batch);
             const lastUpdatedAt = batch.lastUpdatedAt ? new Date(batch.lastUpdatedAt) : null;
             
             if (createdAt) {
                 const threeDaysAgo = new Date(now.getTime() - (3 * 24 * 60 * 60 * 1000));
                 
-                // 作成から3日経過し、その間に更新がない場合
+                // 最終更新日時がある場合はそれを使用、なければ作成日時を使用
                 const lastActivity = lastUpdatedAt || createdAt;
+                
+                console.log(`[AutoStatusUpdater] 船舶チェック: ${batch.name}, 作成=${createdAt.toLocaleDateString()}, 最終更新=${lastActivity.toLocaleDateString()}, 3日前=${threeDaysAgo.toLocaleDateString()}`);
+                
                 if (lastActivity < threeDaysAgo) {
                     console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を運搬履歴に移動`);
                     batch.status = 'completed';
