@@ -3,10 +3,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.extractSchedule = void 0;
+exports.autoUpdateDumpStatuses = exports.extractSchedule = void 0;
 const https_1 = require("firebase-functions/v2/https");
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
+const firestore_1 = require("firebase-admin/firestore");
 const openai_1 = __importDefault(require("openai"));
 if ((0, app_1.getApps)().length === 0) {
     (0, app_1.initializeApp)();
@@ -162,5 +164,104 @@ exports.extractSchedule = (0, https_1.onRequest)({
         }
         res.status(500).json({ error: `OpenAI API エラー: ${msg}` });
     }
+});
+// =====================================================================
+// ダンプの自動ステータス遷移（サーバー側・アプリの開閉に依存しない）
+// 輸送日 = dispatchDate、無ければ登録日(createdAt/ロットID)の翌日。
+// 輸送日 07:00(JST) → 「輸送中」、同日 19:00(JST) → 「運搬履歴」。
+// クライアント側 computeDumpPhase と同一ルール。
+// =====================================================================
+function pad2(n) {
+    return String(n).padStart(2, '0');
+}
+// 輸送日(YYYY-MM-DD, JST)を返す。判定不可なら null。
+function getTransportDateStr(lot) {
+    if (lot && lot.dispatchDate)
+        return String(lot.dispatchDate).slice(0, 10);
+    let baseMs = null;
+    if (lot && lot.createdAt) {
+        if (typeof lot.createdAt === 'string') {
+            const t = Date.parse(lot.createdAt);
+            if (!isNaN(t))
+                baseMs = t;
+        }
+        else if (lot.createdAt && typeof lot.createdAt.toMillis === 'function') {
+            baseMs = lot.createdAt.toMillis();
+        }
+    }
+    if (baseMs === null && lot && lot.id && /LOT-(\d{8})-/.test(lot.id)) {
+        const m = lot.id.match(/LOT-(\d{8})-/)[1];
+        const t = Date.parse(`${m.slice(0, 4)}-${m.slice(4, 6)}-${m.slice(6, 8)}T00:00:00+09:00`);
+        if (!isNaN(t))
+            baseMs = t;
+    }
+    if (baseMs === null)
+        return null;
+    // JSTの日付に変換して翌日
+    const jst = new Date(baseMs + 9 * 3600 * 1000);
+    const d = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate() + 1));
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+function dumpPhase(lot, nowMs) {
+    const td = getTransportDateStr(lot);
+    if (!td)
+        return null;
+    const [y, mo, da] = td.split('-').map(Number);
+    if (!y || !mo || !da)
+        return null;
+    // JSTの 07:00 / 19:00 を UTC ミリ秒で表す（JST = UTC+9 なので時から9を引く）
+    const transportStart = Date.UTC(y, mo - 1, da, 7 - 9, 0, 0);
+    const historyStart = Date.UTC(y, mo - 1, da, 19 - 9, 0, 0);
+    if (nowMs >= historyStart)
+        return 'history';
+    if (nowMs >= transportStart)
+        return 'transport';
+    return 'standby';
+}
+exports.autoUpdateDumpStatuses = (0, scheduler_1.onSchedule)({
+    schedule: 'every 15 minutes',
+    timeZone: 'Asia/Tokyo',
+    timeoutSeconds: 120,
+    memory: '256MiB',
+    maxInstances: 1
+}, async () => {
+    const db = (0, firestore_1.getFirestore)();
+    const nowMs = Date.now();
+    const manualMid = ['積込中', '荷卸し中', '荷卸し完了'];
+    const snap = await db.collection('lots').get();
+    const batch = db.batch();
+    let toTransport = 0;
+    let toHistory = 0;
+    snap.forEach((doc) => {
+        const lot = { id: doc.id, ...doc.data() };
+        if (lot.type !== 'land')
+            return;
+        if (lot.status === 'completed' || lot.status === '完了' || lot.status === 'history')
+            return;
+        const phase = dumpPhase(lot, nowMs);
+        if (!phase)
+            return;
+        if (phase === 'history') {
+            const { id, ...data } = lot;
+            const nowIso = new Date().toISOString();
+            batch.set(db.collection('history').doc(doc.id), { ...data, status: 'completed', completedAt: lot.completedAt || nowIso, updatedAt: nowIso }, { merge: true });
+            batch.delete(doc.ref);
+            toHistory++;
+        }
+        else if (phase === 'transport') {
+            if (!manualMid.includes(lot.status) && lot.status !== '輸送中') {
+                batch.update(doc.ref, {
+                    status: '輸送中',
+                    transportStartedAt: lot.transportStartedAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+                toTransport++;
+            }
+        }
+    });
+    if (toTransport + toHistory > 0) {
+        await batch.commit();
+    }
+    console.log(`[autoUpdateDumpStatuses] 輸送中へ=${toTransport}件 / 履歴へ=${toHistory}件`);
 });
 //# sourceMappingURL=index.js.map
