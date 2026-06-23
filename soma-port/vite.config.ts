@@ -16,6 +16,16 @@ export default defineConfig(() => {
     build: {
       outDir: isSite ? '../hosting_port_schedule' : '../hosting_public/soma-port',
       emptyOutDir: true
+    },
+    server: {
+      proxy: {
+        // ローカル開発時に /api/extract-schedule をFirebase Functionsに転送
+        '/api/extract-schedule': {
+          target: 'https://us-central1-unkou-final.cloudfunctions.net',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/extract-schedule/, '/extractSchedule')
+        }
+      }
     }
   };
 });

@@ -1,22 +1,35 @@
 {
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
   "hosting": [
     {
       "target": "unkou-final",
       "public": "hosting_main",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+      "rewrites": [
+        { "source": "/api/extract-schedule", "function": "extractSchedule" },
+        { "source": "**", "destination": "/index.html" }
+      ]
     },
     {
       "target": "unkou-final-port-schedule",
       "public": "hosting_main",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+      "rewrites": [
+        { "source": "/api/extract-schedule", "function": "extractSchedule" },
+        { "source": "**", "destination": "/index.html" }
+      ]
     },
     {
       "target": "soma",
       "public": "hosting_public",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/soma-port/index.html" }]
+      "rewrites": [
+        { "source": "/api/extract-schedule", "function": "extractSchedule" },
+        { "source": "**", "destination": "/soma-port/index.html" }
+      ]
     }
   ]
 }

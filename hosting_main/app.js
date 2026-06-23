@@ -1,4 +1,3 @@
-globalThis.todayStr = new Date().toISOString().slice(0,10);
 // グローバルエラーハンドラーを追加
 window.addEventListener('error', (e) => {
     console.error('グローバルエラー:', e.error, e.message, e.filename, e.lineno);
@@ -44,7 +43,7 @@ function showDebugInfo(message) {
 // 即座に実行される初期化コード（DOMContentLoadedを待たない）
 (function() {
     console.log('[LogiTrack] app.js スクリプト開始: v20260116-26');
-    //showDebugInfo('app.js スクリプト開始');
+    showDebugInfo('app.js スクリプト開始');
 })();
 
 // 初期化フラグ（重複実行を防ぐ）
@@ -57,7 +56,6 @@ let liveCameraObjectUrl = null;
 
 // DOMContentLoadedとwindow.onloadの両方で初期化を試みる
 function initializeApplication() {
-    try {
     // 既に初期化済みの場合はスキップ
     if (isInitialized) {
         console.log('[LogiTrack] 既に初期化済みのためスキップ');
@@ -96,8 +94,6 @@ function initializeApplication() {
             });
 
             // Update Menu
-            const navItems = document.querySelectorAll('[data-view], .nav-item');
-
             navItems.forEach(item => {
                 if (item.dataset.view === viewId) {
                     item.classList.add('active');
@@ -174,6 +170,21 @@ function initializeApplication() {
     function setupPortScheduleView() {
         if (portScheduleSetupDone) return;
         portScheduleSetupDone = true;
+
+        // 港入港スケジュールのカレンダー(soma-port)を環境に応じて読み込む。
+        // 同一サイトにビルド済みの soma-port があればそれを使う（本番 / ビルド版のローカル配信）。
+        // 無ければ Vite開発サーバ(http://localhost:5173/soma-port/) にフォールバック（ソースのまま開発時）。
+        try {
+            const frame = document.getElementById('port-schedule-calendar-frame');
+            if (frame) {
+                const useViteFallback = () => { frame.src = 'http://localhost:5173/soma-port/'; };
+                fetch('soma-port/index.html', { method: 'HEAD' })
+                    .then((r) => { frame.src = r.ok ? 'soma-port/' : 'http://localhost:5173/soma-port/'; })
+                    .catch(useViteFallback);
+            }
+        } catch (e) {
+            console.error('港スケジュールiframe設定エラー:', e);
+        }
 
         // タブ切替（カレンダー / PDF-JPG）
         const tabCalendarBtn = document.getElementById('port-schedule-tab-calendar');
@@ -287,132 +298,89 @@ function initializeApplication() {
 
     function setupLiveCameraView() {
         if (liveCameraSetupDone) return;
-      
-        const LS_KEY = 'logitrack_live_camera_url';
+        liveCameraSetupDone = true;
 
-        // 入力欄（隠し + port + landfill を全部拾う）
-        const urlInputs = [
-          document.getElementById('live-camera-url'),
-          document.getElementById('live-camera-url-port'),
-          document.getElementById('live-camera-url-landfill'),
-        ].filter(Boolean);
-        
-        // 表示ボタン（隠し + port + landfill を全部拾う）
-        const applyBtns = [
-          document.getElementById('live-camera-apply-btn'),
-          document.getElementById('live-camera-apply-btn-port'),
-          document.getElementById('live-camera-apply-btn-landfill'),
-        ].filter(Boolean);
-        
+        const LS_KEY = 'logitrack_live_camera_url';
+        const urlInput = document.getElementById('live-camera-url');
+        const applyBtn = document.getElementById('live-camera-apply-btn');
         const clearBtn = document.getElementById('live-camera-clear-btn');
         const empty = document.getElementById('live-camera-empty');
         const video = document.getElementById('live-camera-video');
         const iframe = document.getElementById('live-camera-iframe');
-        
-        // ★最低限：表示先と、入力/ボタンが無いならやめる
-        if (!empty || (!video && !iframe) || applyBtns.length === 0 || urlInputs.length === 0) {
-          console.warn('[LiveCamera] elements not ready yet. retry...');
-          setTimeout(setupLiveCameraView, 200);
-          return;
-        }
-        
-        liveCameraSetupDone = true;
-        
-      
+
         const hideAll = () => {
-          if (video) {
-            try { video.pause(); } catch (_) {}
-            video.removeAttribute('src');
-            video.load?.();
-            video.style.display = 'none';
-          }
-          if (iframe) {
-            iframe.src = '';
-            iframe.style.display = 'none';
-          }
-          empty.style.display = '';
+            if (video) {
+                try { video.pause(); } catch (_) { /* noop */ }
+                video.removeAttribute('src');
+                video.load?.();
+                video.style.display = 'none';
+            }
+            if (iframe) {
+                iframe.src = '';
+                iframe.style.display = 'none';
+            }
+            if (empty) empty.style.display = '';
         };
-      
-        // 例: id="live-camera-apply-btn-port" -> suffix="-port"
-        const getSuffix = (id, prefix) => (id && id.startsWith(prefix)) ? id.slice(prefix.length) : '';
-      
-        const applyUrl = (raw, keySuffix = '') => {
-          const url = (raw || '').trim();
-          hideAll();
-          if (!url) return;
-      
-          const LS_KEY = 'logitrack_live_camera_url' + keySuffix;
-          try { localStorage.setItem(LS_KEY, url); } catch (_) {}
-      
-          const isEmbed = /youtube\.com\/embed\/|youtu\.be\/|vimeo\.com\/|\/embed\//i.test(url);
-          const isHls = /\.m3u8(\?|#|$)/i.test(url);
-      
-          if (isEmbed && iframe) {
-            empty.style.display = 'none';
-            iframe.src = url;
-            iframe.style.display = '';
-            return;
-          }
-      
-          if (video) {
-            empty.style.display = 'none';
-            video.src = url;
-            video.style.display = '';
-            if (isHls) { /* Chromeは基本そのまま再生不可（ここでは何もしない） */ }
-          }
-        };
-      
-        // ★保存済み復元（入力欄に反映）
-        urlInputs.forEach(input => {
-          const suffix = getSuffix(input.id, 'live-camera-url');
-          const key = 'logitrack_live_camera_url' + suffix;
-          try {
-            const saved = localStorage.getItem(key) || '';
-            if (saved) input.value = saved;
-          } catch (_) {}
-        });
-      
-        // ★「表示」ボタン：各ボタンに確実にイベント付与
-        applyBtns.forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const suffix = getSuffix(btn.id, 'live-camera-apply-btn');
-            const input =
-              document.getElementById('live-camera-url' + suffix) ||
-              btn.parentElement?.querySelector('input[type="url"]');
-            console.log('[LiveCamera] apply clicked', suffix, input?.value);
-            if (typeof applyUrl === 'function') { applyUrl(input?.value || '', suffix); } else { console.warn('[LogiTrack] applyUrl is not defined - skipped'); }
-});
-        });
-      
-        // ★クリア（既存ボタンが1つならそれに付ける）
-        if (clearBtn) {
-          clearBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            // 2系統あるので両方消す（存在するものだけ）
-            try { localStorage.removeItem('logitrack_live_camera_url-port'); } catch (_) {}
-            try { localStorage.removeItem('logitrack_live_camera_url-landfill'); } catch (_) {}
-            try { localStorage.removeItem('logitrack_live_camera_url'); } catch (_) {}
-      
-            urlInputs.forEach(i => i.value = '');
+
+        const applyUrl = (raw) => {
+            const u = (raw || '').trim();
             hideAll();
-          });
-        }
-      }
-      
-      
-      
-      
-      
-      
-      
+            if (!u) return;
+
+            // 保存（次回も表示できるように）
+            try { localStorage.setItem(LS_KEY, u); } catch (_) { /* noop */ }
+
+            // YouTube等はiframeで、それ以外はvideoで試す
+            const isEmbed = /youtube\.com\/embed\/|youtu\.be\/|vimeo\.com\/|\/embed\//i.test(u);
+            const isHls = /\.m3u8(\?|#|$)/i.test(u);
+            if (isEmbed && iframe) {
+                if (empty) empty.style.display = 'none';
+                iframe.src = u;
+                iframe.style.display = '';
+                return;
+            }
+            if (video) {
+                if (empty) empty.style.display = 'none';
+                // HLSはSafari以外はhls.jsが必要だが、まずはネイティブ再生を試す（暫定）
+                video.src = u;
+                video.style.display = '';
+                if (isHls) {
+                    // 再生はユーザー操作が必要な場合があるので自動再生しない
+                }
+                return;
+            }
+        };
+
+        // 初期表示：保存済みURLがあればセット
+        try {
+            const saved = localStorage.getItem(LS_KEY) || '';
+            if (urlInput && saved) urlInput.value = saved;
+        } catch (_) { /* noop */ }
+
+        applyBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyUrl(urlInput?.value || '');
+        });
+
+        clearBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            try { localStorage.removeItem(LS_KEY); } catch (_) { /* noop */ }
+            if (urlInput) urlInput.value = '';
+            hideAll();
+        });
+
+        urlInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyUrl(urlInput.value || '');
+            }
+        });
+
         // 画面を開いた瞬間に、保存済みがあれば反映
-        if (typeof applyUrl === 'function') { applyUrl(urlInput?.value || ''); } else { console.warn('[LogiTrack] applyUrl is not defined - skipped'); }
-} catch (e) { console.error(e); }
+        applyUrl(urlInput?.value || '');
+    }
 
     try {
-        const navItems = document.querySelectorAll('[data-view], .nav-item');
-
         navItems.forEach(item => {
             item.addEventListener('click', (e) => {
                 try {
@@ -1431,11 +1399,68 @@ function initializeApplication() {
     }
 
     // --- Rendering ---
+    // ダッシュボードのKPIカードを実データから算出して更新する
+    function renderKpis() {
+        try {
+            const batches = Array.isArray(state.batches) ? state.batches : [];
+            const num = (v) => {
+                const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+                return isNaN(n) ? 0 : n;
+            };
+            const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
+            const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            const setHtml = (id, v) => { const el = document.getElementById(id); if (el) el.innerHTML = v; };
+
+            // 稼働中とみなすステータス（荷卸し完了・完了は除く）
+            const activeStatuses = ['輸送中', '積込待ち', '積込中', '荷卸し中'];
+            const doneStatuses = ['荷卸し完了', '完了'];
+
+            const seaBatches = batches.filter(b => b.type === 'sea');
+            const landBatches = batches.filter(b => b.type !== 'sea');
+            const seaActive = seaBatches.filter(b => activeStatuses.includes(b.status));
+            const landActive = landBatches.filter(b => activeStatuses.includes(b.status));
+
+            // 1ロットの代表トン数（重量t → 総t → 数量m3 → 積載 の優先順）
+            const lotTon = (b) => num(b.weightTonnage) || num(b.grossTonnage) || num(b.volume) || num(b.capacity);
+
+            // 履歴（完了済み）のトン数
+            const histTon = (Array.isArray(state.history) ? state.history : [])
+                .reduce((s, h) => s + num(h.amount), 0);
+            // 総積込量：進行中ロット + 完了履歴 の累計トン数
+            const totalLoad = batches.reduce((s, b) => s + lotTon(b), 0) + histTon;
+            // 最終埋立完了：荷卸し完了/完了ロット + 履歴 の合計トン数
+            const landfillDone = batches.filter(b => doneStatuses.includes(b.status))
+                .reduce((s, b) => s + lotTon(b), 0) + histTon;
+
+            // 稼働台数の分母（マスタ台数、無ければ登録数）
+            const totalShips = new Set(
+                [...seaBatches.map(b => b.name), ...((state.masters && state.masters.vessels) || [])].filter(Boolean)
+            ).size || seaBatches.length;
+            const totalTrucks = ((state.masters && state.masters.trucks) || []).length || landBatches.length;
+
+            setHtml('kpi-total-load', `${fmt(totalLoad)} <span class="unit">t</span>`);
+            setText('kpi-total-load-sub', `登録ロット ${batches.length}件`);
+
+            const shipRate = totalShips ? Math.round(seaActive.length / totalShips * 100) : 0;
+            setText('kpi-ship-active', `${seaActive.length} / ${totalShips}`);
+            setText('kpi-ship-rate', `稼働率 ${shipRate}%`);
+
+            const truckRate = totalTrucks ? Math.round(landActive.length / totalTrucks * 100) : 0;
+            setText('kpi-truck-active', `${landActive.length} / ${totalTrucks}`);
+            setText('kpi-truck-rate', `稼働率 ${truckRate}%`);
+
+            setHtml('kpi-landfill-done', `${fmt(landfillDone)} <span class="unit">t</span>`);
+            const progRate = totalLoad ? Math.min(100, Math.round(landfillDone / totalLoad * 100)) : 0;
+            const prog = document.getElementById('kpi-landfill-progress');
+            if (prog) prog.style.width = progRate + '%';
+        } catch (e) {
+            console.error('renderKpis エラー:', e);
+        }
+    }
+
     function renderBatches() {
         try {
-            
-        const now = new Date();
-const seaBody = document.querySelector('#batch-table-sea tbody');
+            const seaBody = document.querySelector('#batch-table-sea tbody');
             const landBody = document.querySelector('#batch-table-land tbody');
             if (!seaBody && !landBody) return;
             if (seaBody) seaBody.innerHTML = '';
@@ -1512,6 +1537,7 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
 
             renderShipTracking();
             renderTruckTracking();
+            renderKpis();
         } catch (e) {
             console.error('renderBatches エラー:', e);
         }
@@ -1572,7 +1598,6 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
     }
 
     function renderTruckTracking() {
-        const now = new Date();
         const lists = {
             'standby': document.getElementById('list-standby'),
             '輸送中': document.getElementById('list-transport')
@@ -1588,56 +1613,11 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
         // 船名リストを取得（船名を除外するため）
         const vesselNames = state.masters?.vessels || [];
         
-                // 19時以降は「輸送中（本日港通行予定）」を履歴へ移動（消えない版：先に履歴、最後に削除）
-        const histNow = new Date();
-        const histTodayStr = `${histNow.getFullYear()}-${String(histNow.getMonth() + 1).padStart(2, '0')}-${String(histNow.getDate()).padStart(2, '0')}`;
+        // ステータスの自動遷移（待機→輸送中→履歴）は checkAndUpdateStatuses（定期更新）が
+        // 一元管理する。ここでは現在のフェーズに応じてカンバンの列に振り分けるだけ（表示専用）。
+        const now = new Date();
 
-
-        if (!Array.isArray(state.history)) state.history = [];
-
-        const moveItems = [];
-        state.batches.forEach(b => {
-            if (b.type !== 'land') return;
-            if (b.status !== '輸送中') return;
-            if (!b.dispatchDate) return;
-            if (b.dispatchDate !== todayStr) return;
-            if (now.getHours() < 19) return;
-            moveItems.push(b);
-        });
-
-        if (moveItems.length) {
-            const toMoveIds = new Set();
-
-            moveItems.forEach(b => {
-                const historyItem = {
-                    id: b.id,
-                    name: b.name,
-                    company: b.company,
-                    type: b.type,
-                    location: b.location,
-                    status: '完了',
-                    site: b.site,
-                    completedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-                    amount: b.capacity || ''
-                };
-
-                // 先に履歴に入れる（これで“消える”が起きにくい）
-                state.history.push(historyItem);
-
-                // Firestoreは失敗してもOK（履歴一覧は残る）
-                firestoreUpsertHistory(historyItem).catch(() => {});
-                toMoveIds.add(b.id);
-            });
-
-            // 最後に active から削除
-            state.batches = state.batches.filter(b => !(b && toMoveIds.has(b.id)));
-            toMoveIds.forEach(id => firestoreDeleteLot(id).catch(() => {}));
-
-            saveState();
-        }
-                // (重複していた19時移行ブロックを削除しました)
-
-// ダンプ位置画面には、当日になった entry_registered も移行対象に含める
+        // ダンプ位置画面には、当日になった entry_registered も移行対象に含める
         // また、船名（vessels）も除外する（誤ってtype=landで登録された船を除外）
         const trucks = state.batches.filter(b => {
             // type=land、かつ船名でないもののみ
@@ -1652,55 +1632,25 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
         // Count Map
         const countMap = { 'standby': 0, '輸送中': 0 };
 
-        let statusChanged = false;
         trucks.forEach(t => {
-            const originalStatus = t.status || 'standby';
-            let statusKey = originalStatus;
-            let listKey = 'standby';
-            
-            // 港通行予定日が今日の場合は「輸送中」列に表示（前日に配車が組まれ、当日になったら自動的に移動）
-            // または、既に輸送中ステータスの場合は「輸送中」列に表示
-            if (originalStatus === '輸送中') {
+            const status = t.status || 'standby';
+            // 履歴/完了は表示しない
+            if (status === '完了' || status === 'completed' || status === 'history') return;
+            // 手動の別工程（積込中・荷卸し中・荷卸し完了）はカンバンに出さない
+            if (status === '積込中' || status === '荷卸し中' || status === '荷卸し完了') return;
+
+            // 列の振り分け（表示専用・状態は変更しない）
+            let listKey;
+            if (status === '輸送中') {
                 listKey = '輸送中';
-            } else {
-                const dispatchDate = t.dispatchDate || '';
-                if (dispatchDate && originalStatus === 'entry_registered') {
-                    // 配車予定日が組まれたら「入場済み / 待機」へ移動
-                    t.status = 'standby';
-                    statusChanged = true;
-                }
-                if (dispatchDate === todayStr && t.status !== 'entry_registered') {
-                    // 当日6:00以降に「輸送中」へ移動
-                    const isAfterSix = now.getHours() >= 6;
-                    if (!isAfterSix) {
-                        listKey = 'standby';
-                        statusKey = 'standby';
-                        return;
-                    }
-                // 当日のバッチは「輸送中」列に表示（当日になったら自動的に移動）
-                // ただし、キャンセル処理中のバッチ（window.originalBatchStatusが設定されている）は自動更新をスキップ
-                if (window.originalBatchId && window.originalBatchId === t.id && window.originalBatchStatus) {
-                    // キャンセル処理中のバッチは、元のステータスのままにする
-                    listKey = 'standby';
-                    statusKey = 'standby';
-                } else {
-                    listKey = '輸送中';
-                    statusKey = '輸送中';
-                    // ステータスがまだ更新されていない場合は、自動的に更新する
-                    if (t.status !== '輸送中') {
-                        t.status = '輸送中';
-                        statusChanged = true;
-                    }
-                }
-                } else if (originalStatus === 'standby' || originalStatus === '積込待ち' ) {
-                // standbyまたは積込待ちは「入場済み/待機」列に表示（前日に配車が組まれた状態）
+            } else if (window.originalBatchId && window.originalBatchId === t.id && window.originalBatchStatus) {
+                // 編集/キャンセル処理中のバッチは待機のままにする
                 listKey = 'standby';
-                statusKey = 'standby'; // 表示用のステータスキーを統一
-                } else {
-                // その他のステータス（積込中、荷卸し中、荷卸し完了など）は表示しない
-                return; // このダンプは表示しない
+            } else {
+                const phase = computeDumpPhase(t, now);
+                listKey = (phase === 'transport') ? '輸送中' : 'standby';
             }
-            }
+            const statusKey = listKey;
 
             countMap[statusKey] = (countMap[statusKey] || 0) + 1;
 
@@ -1758,10 +1708,6 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
             
             if (lists[listKey]) lists[listKey].appendChild(card);
         });
-
-        if (statusChanged) {
-            saveState();
-        }
 
         // Update counts
         if (counts['standby']) counts['standby'].textContent = countMap['standby'] || 0;
@@ -2505,15 +2451,19 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
     }
 
     function setManualEditMode(enabled) {
+        console.log('setManualEditMode呼び出し: enabled=', enabled);
         manualEditEnabled = !!enabled;
         const btn = document.getElementById('toggle-edit-mode-btn');
+        console.log('toggle-edit-mode-btn要素:', btn);
         if (btn) {
             btn.textContent = `編集: ${manualEditEnabled ? 'ON' : 'OFF'}`;
             btn.classList.toggle('primary', manualEditEnabled);
+            console.log('ボタンテキスト更新:', btn.textContent);
         }
     }
 
     function applyEditabilityForBatch(batch) {
+        console.log('applyEditabilityForBatch呼び出し: batch.type=', batch?.type, 'manualEditEnabled=', manualEditEnabled);
         if (!batch) return;
         // 配車モード（ダンプ登録（配車））は “編集:ON” とは別物なので、
         // manualEditEnabled によるロックを適用しない（ロット番号選択ができなくなるため）
@@ -3312,9 +3262,9 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
         }
     }
     
-//      入場登録ボタン（イベント委譲：要素が差し替わっても必ず拾う）
-//      入場登録ボタンのイベントリスナー（複数の方法で確実に動作）
-// 
+    // 入場登録ボタン（イベント委譲：要素が差し替わっても必ず拾う）
+    // 入場登録ボタンのイベントリスナー（複数の方法で確実に動作）
+
  //   const openTruckModalBtn = document.getElementById('open-truck-modal-btn');
  //   if (openTruckModalBtn) {
  //       openTruckModalBtn.addEventListener('click', (e) => {
@@ -3332,53 +3282,134 @@ const seaBody = document.querySelector('#batch-table-sea tbody');
 //        console.warn('open-truck-modal-btn が見つかりません');
 //    }
    
- // イベント委譲も追加（念のため）
-// ✅ 二重登録防止（同じリスナーを複数回登録しない）
-if (window.__ltDelegatedClickInstalled) return;
-window.__ltDelegatedClickInstalled = true;
-
+    // イベント委譲も追加（念のため）
+   // イベント委譲も追加（念のため）
 document.addEventListener('click', (e) => {
-
-  // 1) 入場登録
-  const truckBtn = e.target?.closest?.('#open-truck-modal-btn');
-  if (truckBtn) {
-    try {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation?.();
-
-      // ★追加：submit化を確実に潰す（将来form内に入っても安全）
-      if (truckBtn.tagName === 'BUTTON') truckBtn.type = 'button';
-
-      console.log('入場登録ボタンがクリックされました（委譲）');
-      showTruckEntryModal();
-    } catch (error) {
-      console.error('入場登録ボタン（委譲） エラー:', error);
+    // 1) 入場登録
+    const truckBtn = e.target?.closest?.('#open-truck-modal-btn');
+    if (truckBtn) {
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('入場登録ボタンがクリックされました（委譲）');
+        showTruckEntryModal();
+      } catch (error) {
+        console.error('入場登録ボタン（委譲） エラー:', error);
+      }
+      return;
     }
-    return;
-  }
+  
+ // 新規ロット追加：idが無くても / submitでも拾って必ず止める（フォーム送信防止）
+const lotBtn =
+e.target?.closest?.('#open-modal-btn, .open-modal-btn, [data-action="open-lot-modal"]')
+|| (() => {
+    // フォールバック：表示テキスト/値に「新規ロット追加」を含むボタン/入力を拾う
+    const el = e.target?.closest?.('button, a, input');
+    if (!el) return null;
+    const label = (el.textContent || el.value || '').trim();
+    return label.includes('新規ロット追加') ? el : null;
+  })();
 
-  // 2) 新規ロット追加
-  const lotBtn = e.target?.closest?.('#open-modal-btn');
-  if (lotBtn) {
-    try {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation?.();
+if (lotBtn) {
+// submit / formaction / target=_blank 等を全部無効化する
+e.preventDefault();
+e.stopPropagation();
+e.stopImmediatePropagation?.();
 
-      // ★追加：submit化を確実に潰す（将来form内に入っても安全）
-      if (lotBtn.tagName === 'BUTTON') lotBtn.type = 'button';
+console.log('新規ロット追加ボタンがクリックされました（委譲）', lotBtn);
 
-      console.log('新規ロット追加ボタンがクリックされました（委譲）');
-      toggleModal('lot', true);
-    } catch (error) {
-      console.error('新規ロット追加ボタン（委譲） エラー:', error);
+// 新規登録モード用のリセット処理
+editingBatchId = null;
+dispatchingBatchId = null;
+setDispatchMode(false);
+
+// タイトルを新規登録用に変更
+const modalTitle = document.getElementById('lot-modal-title');
+if (modalTitle) modalTitle.textContent = '新規ロット登録（船舶）';
+
+// 編集ボタンを非表示
+setManualEditMode(false);
+const editBtn = document.getElementById('toggle-edit-mode-btn');
+if (editBtn) editBtn.style.display = 'none';
+
+// 種別選択を表示して船舶をデフォルトに
+const lotTypeRow = document.getElementById('lot-type-row');
+if (lotTypeRow) lotTypeRow.style.display = '';
+const lotType = document.getElementById('lot-type');
+if (lotType) lotType.value = 'sea';
+
+// ロット番号を自動生成モードに
+const parentShipSelect = document.getElementById('parent-ship-select');
+if (parentShipSelect) {
+    parentShipSelect.required = false;
+    parentShipSelect.style.display = 'none';
+}
+const lotIdInput = document.getElementById('lot-id');
+if (lotIdInput) {
+    lotIdInput.style.display = '';
+    lotIdInput.value = ''; // クリア（フォーム送信時に自動生成）
+}
+const lotIdLabel = document.getElementById('label-lot-id');
+if (lotIdLabel) {
+    lotIdLabel.textContent = 'ロット番号（自動生成）';
+    lotIdLabel.htmlFor = 'lot-id';
+}
+
+// 「待機に移動」と「削除」ボタンを非表示、「登録する」を表示
+const submitBtn = document.getElementById('submit-btn');
+const moveToStandbyBtn = document.getElementById('move-to-standby-btn');
+const deleteBatchBtn = document.getElementById('delete-batch-btn');
+if (submitBtn) {
+    submitBtn.textContent = '登録する';
+    submitBtn.style.display = '';
+}
+if (moveToStandbyBtn) moveToStandbyBtn.style.display = 'none';
+if (deleteBatchBtn) deleteBatchBtn.style.display = 'none';
+
+// フォームをリセット
+const form = document.getElementById('add-lot-form');
+if (form) form.reset();
+
+// すべてのフィールドを編集可能にする
+const formFields = [
+    'lot-company', 'lot-name', 'lot-location', 'lot-site', 
+    'lot-status', 'departure-date', 'soil-type', 'lot-plant', 
+    'lot-gross-tonnage', 'lot-weight-tonnage', 'lot-volume',
+    'lot-notes', 'lot-crew', 'lot-driver', 'lot-capacity', 
+    'lot-truck-category', 'port-entry-date', 'dispatch-date', 'parent-ship-select'
+];
+formFields.forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    if (field) {
+        if (field.tagName === 'SELECT') {
+            field.disabled = false;
+        } else {
+            field.readOnly = false;
+        }
+        field.style.backgroundColor = '';
     }
-    return;
-  }
+});
 
-}, true);
+// マップ設定をデフォルト値で初期化
+if (window.state && window.state.mapPoints) {
+    const loadingPortEl = document.getElementById('loading-port-name');
+    const landingPortEl = document.getElementById('landing-port-name');
+    if (loadingPortEl) loadingPortEl.value = window.state.mapPoints.loadingPort?.name || '';
+    if (landingPortEl) landingPortEl.value = window.state.mapPoints.landingPort?.name || '';
+}
 
+// フォームオプションを更新
+if (typeof updateFormOptions === 'function') {
+    updateFormOptions();
+}
+
+toggleModal('lot', true);
+return;
+}
+
+
+  }, true);
+  
     
     document.getElementById('close-truck-modal-btn')?.addEventListener('click', () => toggleModal('truck', false));
 
@@ -3987,10 +4018,19 @@ document.addEventListener('click', (e) => {
         const editBtn = document.getElementById('toggle-edit-mode-btn');
         if (editBtn) {
             editBtn.style.display = 'inline-flex';
-            editBtn.onclick = () => {
+            // 既存のイベントリスナーをクリア
+            editBtn.replaceWith(editBtn.cloneNode(true));
+            const newEditBtn = document.getElementById('toggle-edit-mode-btn');
+            newEditBtn.style.display = 'inline-flex';
+            newEditBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('編集ボタンがクリックされました。現在のモード:', manualEditEnabled);
                 setManualEditMode(!manualEditEnabled);
+                console.log('編集モード変更後:', manualEditEnabled);
                 applyEditabilityForBatch(batch);
-            };
+                console.log('applyEditabilityForBatch完了');
+            });
         }
 
         // Set Type & Trigger UI updates
@@ -4042,19 +4082,19 @@ document.addEventListener('click', (e) => {
         const grossTonnageEl = document.getElementById('lot-gross-tonnage');
         if (grossTonnageEl) {
             grossTonnageEl.value = batch.grossTonnage || '';
-            grossTonnageEl.readOnly = false; // 読み取り専用
+            grossTonnageEl.readOnly = true; // 読み取り専用
         }
         
         const weightTonnageEl = document.getElementById('lot-weight-tonnage');
         if (weightTonnageEl) {
             weightTonnageEl.value = batch.weightTonnage || '';
-            weightTonnageEl.readOnly = false; // 読み取り専用
+            weightTonnageEl.readOnly = true; // 読み取り専用
         }
         
         const volumeEl = document.getElementById('lot-volume');
         if (volumeEl) {
             volumeEl.value = batch.volume || '';
-            volumeEl.readOnly = false; // 読み取り専用
+            volumeEl.readOnly = true; // 読み取り専用
         }
 
         if (batch.departureDate) {
@@ -4319,7 +4359,9 @@ document.addEventListener('click', (e) => {
                     // 荷元の船舶（ダンプの場合のみ）
                     parentShipId: newParentShipId,
                     // 港通行予定日（ダンプの場合のみ）
-                    portEntryDate: newPortEntryDate
+                    portEntryDate: newPortEntryDate,
+                    // 更新日時を記録（自動履歴移動の判定に使用）
+                    lastUpdatedAt: new Date().toISOString()
                 };
 
                 // Firestoreへは更新後のbatchを保存
@@ -4337,6 +4379,7 @@ document.addEventListener('click', (e) => {
             }
         } else {
             // Create New
+            const now = new Date().toISOString();
             const newBatch = {
                 id: document.getElementById('lot-id').value,
                 name: document.getElementById('lot-name').value,
@@ -4355,7 +4398,9 @@ document.addEventListener('click', (e) => {
                 notes: document.getElementById('lot-notes').value,
                 docs: newDocs,
                 progress: 0,
-                parentShipId: type === 'land' ? (parentShipSelect?.value || '') : undefined
+                parentShipId: type === 'land' ? (parentShipSelect?.value || '') : undefined,
+                createdAt: now,
+                lastUpdatedAt: now
             };
 
             if (type === 'land') {
@@ -4363,10 +4408,9 @@ document.addEventListener('click', (e) => {
                 newBatch.driver = document.getElementById('lot-driver').value;
                 newBatch.capacity = document.getElementById('lot-capacity').value;
                 newBatch.category = normalizeTruckCategory(document.getElementById('lot-truck-category').value);
-                // 配車予定日（フォームから取得、なければ今日の日付）
-                const dispatchDateValue = document.getElementById('dispatch-date')?.value || '';
-                const today = new Date();
-                newBatch.dispatchDate = dispatchDateValue || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                // 配車予定日（フォームから取得）。未入力なら空のままにし、
+                // 輸送日は「登録の翌日」を自動採用する（computeDumpPhase が判定）。
+                newBatch.dispatchDate = document.getElementById('dispatch-date')?.value || '';
                 // 荷元の船舶
                 newBatch.parentShipId = parentShipSelect?.value || '';
                 // 港通行予定日
@@ -4871,6 +4915,9 @@ window.addEventListener('load', () => {
             try {
                 showDebugInfo('window.onload 遅延初期化開始');
                 initializeApplication();
+                
+                // 自動ステータス更新を開始
+                startAutoStatusUpdater();
             } catch (e) {
                 console.error('window.onload 初期化エラー:', e);
                 showDebugInfo('window.onload 初期化エラー: ' + e.message);
@@ -4882,12 +4929,450 @@ window.addEventListener('load', () => {
     }
 });
 
+// ========================================
+// 自動ステータス更新機能
+// ========================================
+// 運用ルール:
+// 【船舶】新規登録から3日後に「運搬履歴」へ自動移動（変更がない場合）
+// 【ダンプ】配車日AM7:00に「輸送中」へ移行、当日PM19:00に「運搬履歴」へ移動
 
+let autoStatusUpdaterInterval = null;
 
+// ========================================
+// ダンプの自動遷移ルール（共通判定）
+// ・輸送日 = 配車予定日(dispatchDate)。未入力なら「登録日の翌日」。
+// ・輸送日の 07:00 になったら「輸送中」、同日 19:00 になったら「履歴」。
+// ・すべて現地時刻(JST)のタイムスタンプ比較。アプリを閉じていても、
+//   次に開いた時点の現在時刻で正しい段階に追いつく（catch-up）。
+// ========================================
+function localDateStr(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
+// 輸送日(YYYY-MM-DD)を返す。判定不可なら null。
+function getDumpTransportDate(batch) {
+    if (batch && batch.dispatchDate) return String(batch.dispatchDate).slice(0, 10);
+    let base = null;
+    if (batch && batch.createdAt) {
+        base = new Date(batch.createdAt);
+    } else if (batch && batch.id && /LOT-(\d{8})-/.test(batch.id)) {
+        const m = batch.id.match(/LOT-(\d{8})-/)[1];
+        base = new Date(`${m.slice(0, 4)}-${m.slice(4, 6)}-${m.slice(6, 8)}T00:00:00`);
+    }
+    if (!base || isNaN(base.getTime())) return null;
+    base.setDate(base.getDate() + 1); // 登録の翌日
+    return localDateStr(base);
+}
 
+// 現在のフェーズを返す: 'standby'(待機) | 'transport'(輸送中) | 'history'(履歴) | null(判定不可)
+function computeDumpPhase(batch, now) {
+    const td = getDumpTransportDate(batch);
+    if (!td) return null;
+    const [y, mo, da] = td.split('-').map(Number);
+    if (!y || !mo || !da) return null;
+    const transportStart = new Date(y, mo - 1, da, 7, 0, 0, 0);  // 当日 07:00（現地）
+    const historyStart = new Date(y, mo - 1, da, 19, 0, 0, 0);   // 当日 19:00（現地）
+    if (now.getTime() >= historyStart.getTime()) return 'history';
+    if (now.getTime() >= transportStart.getTime()) return 'transport';
+    return 'standby';
+}
 
+function startAutoStatusUpdater() {
+    // 既に起動中の場合は停止
+    if (autoStatusUpdaterInterval) {
+        clearInterval(autoStatusUpdaterInterval);
+    }
+    
+    console.log('[AutoStatusUpdater] 自動ステータス更新を開始します');
+    showDebugInfo('自動ステータス更新を開始');
+    
+    // 初回実行
+    checkAndUpdateStatuses();
+    
+    // 1分ごとにチェック（本番環境では5分〜10分程度が適切）
+    autoStatusUpdaterInterval = setInterval(() => {
+        checkAndUpdateStatuses();
+    }, 60 * 1000); // 60秒
+}
 
+function checkAndUpdateStatuses() {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    
+    console.log(`[AutoStatusUpdater] ステータスチェック実行: ${now.toLocaleString()}`);
+    
+    const dataState = window.state;
+    if (!dataState || !dataState.batches || !Array.isArray(dataState.batches)) {
+        console.log('[AutoStatusUpdater] stateまたはbatchesが見つかりません');
+        return;
+    }
+    
+    let updated = false;
+    const movedToHistory = [];
+    
+    // createdAtがない古いデータに日付を設定する補助関数
+    function getOrEstimateCreatedAt(batch) {
+        if (batch.createdAt) {
+            return new Date(batch.createdAt);
+        }
+        // ロットIDから日付を推測 (例: LOT-20260114-001 → 2026-01-14)
+        if (batch.id && batch.id.match(/LOT-(\d{8})-/)) {
+            const dateStr = batch.id.match(/LOT-(\d{8})-/)[1];
+            const year = dateStr.substring(0, 4);
+            const month = dateStr.substring(4, 6);
+            const day = dateStr.substring(6, 8);
+            const estimated = new Date(`${year}-${month}-${day}T00:00:00`);
+            if (!isNaN(estimated.getTime())) {
+                // 推測した日付をバッチに保存
+                batch.createdAt = estimated.toISOString();
+                console.log(`[AutoStatusUpdater] createdAtを推測: ${batch.id} → ${batch.createdAt}`);
+                return estimated;
+            }
+        }
+        // 推測できない場合はnullを返す
+        return null;
+    }
+    
+    dataState.batches.forEach(batch => {
+        if (!batch) return;
+        
+        // 既にcompletedだがbatchesに残っているものをhistoryに移動
+        if (batch.status === 'completed' || batch.status === 'history') {
+            movedToHistory.push({ type: batch.type === 'sea' ? '船舶' : 'ダンプ', id: batch.id, name: batch.name });
+            updated = true;
+            return;
+        }
+        
+        // ========================================
+        // 【船舶】登録から24h→輸送中、48h→荷卸し中、72h→運搬履歴
+        // ========================================
+        if (batch.type === 'sea') {
+            const createdAt = getOrEstimateCreatedAt(batch);
+            
+            if (createdAt) {
+                const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+                
+                console.log(`[AutoStatusUpdater] 船舶チェック: ${batch.name}, 作成=${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString()}, 経過=${hoursSinceCreation.toFixed(1)}時間, 現ステータス=${batch.status}`);
+                
+                // 72時間（3日）経過 → 運搬履歴へ
+                if (hoursSinceCreation >= 72) {
+                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を運搬履歴に移動（72時間経過）`);
+                    batch.status = 'completed';
+                    batch.completedAt = now.toISOString();
+                    movedToHistory.push({ type: '船舶', id: batch.id, name: batch.name });
+                    updated = true;
+                }
+                // 48時間（2日）経過 → 荷卸し中
+                else if (hoursSinceCreation >= 48 && batch.status !== '荷卸し中' && batch.status !== '荷卸し完了') {
+                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を荷卸し中に変更（48時間経過）`);
+                    batch.status = '荷卸し中';
+                    updated = true;
+                }
+                // 24時間（1日）経過 → 輸送中
+                else if (hoursSinceCreation >= 24 && batch.status !== '輸送中' && batch.status !== '荷卸し中' && batch.status !== '荷卸し完了') {
+                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を輸送中に変更（24時間経過）`);
+                    batch.status = '輸送中';
+                    updated = true;
+                }
+            }
+        }
+        
+        // ========================================
+        // 【ダンプ】輸送日 07:00→輸送中、同日 19:00→運搬履歴（共通ルール）
+        // ========================================
+        if (batch.type === 'land') {
+            // 既に完了/履歴のものは対象外
+            if (batch.status === 'completed' || batch.status === '完了' || batch.status === 'history') return;
+            // 手動の途中工程（積込中・荷卸し中など）は自動で上書きしない
+            const manualMidStatuses = ['積込中', '荷卸し中', '荷卸し完了'];
+            const phase = computeDumpPhase(batch, now);
+            if (!phase) return; // 輸送日が判定できない場合は何もしない
 
+            if (phase === 'history') {
+                // 19:00を過ぎたら履歴へ（アプリを閉じていた場合の遅れも含めて追いつく）
+                batch.status = 'completed';
+                batch.completedAt = batch.completedAt || now.toISOString();
+                movedToHistory.push({ type: 'ダンプ', id: batch.id, name: batch.name });
+                updated = true;
+            } else if (phase === 'transport') {
+                // 07:00〜19:00 は輸送中（待機系のステータスのみ自動で移行）
+                if (!manualMidStatuses.includes(batch.status) && batch.status !== '輸送中') {
+                    batch.status = '輸送中';
+                    batch.transportStartedAt = batch.transportStartedAt || now.toISOString();
+                    updated = true;
+                }
+            }
+            // phase === 'standby' は待機のまま（何もしない）
+        }
+    });
+    
+    // completedになったバッチをhistoryに移動
+    if (movedToHistory.length > 0) {
+        movedToHistory.forEach(item => {
+            const batchIndex = dataState.batches.findIndex(b => b.id === item.id);
+            if (batchIndex !== -1) {
+                const batch = dataState.batches[batchIndex];
+                
+                // historyに追加
+                if (!dataState.history) dataState.history = [];
+                dataState.history.unshift({
+                    ...batch,
+                    completedAt: batch.completedAt || now.toISOString()
+                });
+                
+                // batchesから削除
+                dataState.batches.splice(batchIndex, 1);
+                
+                // Firestoreにも反映
+                if (typeof firestoreUpsertHistory === 'function') {
+                    firestoreUpsertHistory(batch).catch(() => {});
+                }
+                if (typeof firestoreDeleteLot === 'function') {
+                    firestoreDeleteLot(batch.id).catch(() => {});
+                }
+                
+                console.log(`[AutoStatusUpdater] ${item.type} ${item.name} をhistoryに移動完了`);
+            }
+        });
+    }
+    
+    // 更新があった場合は保存と再描画
+    if (updated) {
+        console.log('[AutoStatusUpdater] ステータス更新あり、保存と再描画を実行');
+        showDebugInfo(`自動更新: ${movedToHistory.length}件を履歴に移動`);
+        
+        // Firestoreに保存（saveState関数がある場合）
+        if (typeof saveState === 'function') {
+            saveState();
+        }
+        
+        // 画面を再描画
+        if (typeof renderBatches === 'function') {
+            renderBatches();
+        }
+        if (typeof renderTruckTracking === 'function') {
+            renderTruckTracking();
+        }
+        if (typeof renderEntryRegistered === 'function') {
+            renderEntryRegistered();
+        }
+        if (typeof renderHistory === 'function') {
+            renderHistory();
+        }
+        
+        // 通知（移動があった場合）
+        if (movedToHistory.length > 0) {
+            const message = movedToHistory.map(m => `${m.type}: ${m.name}`).join('\n');
+            console.log('[AutoStatusUpdater] 運搬履歴に移動:\n' + message);
+            // alert は邪魔になるのでコンソールログのみ
+        }
+    }
+}
 
+// 手動でステータス更新を実行する関数（デバッグ用）
+window.forceCheckStatuses = function() {
+    console.log('[AutoStatusUpdater] 手動でステータスチェックを実行');
+    checkAndUpdateStatuses();
+};
 
+// ページを閉じる時に停止
+window.addEventListener('beforeunload', () => {
+    if (autoStatusUpdaterInterval) {
+        clearInterval(autoStatusUpdaterInterval);
+    }
+});
+
+// ========================================
+// データエクスポート/インポート機能
+// ========================================
+// 複数人での作業時にデータを共有・バックアップするための機能
+
+// 全データをJSONファイルとしてエクスポート
+window.exportAllData = function() {
+    const dataState = window.state;
+    if (!dataState) {
+        alert('データが見つかりません。');
+        return;
+    }
+    
+    const exportData = {
+        exportedAt: new Date().toISOString(),
+        version: '1.0',
+        batches: dataState.batches || [],
+        masters: dataState.masters || {},
+        mapPoints: dataState.mapPoints || {},
+        alerts: dataState.alerts || [],
+        truckMaster: dataState.truckMaster || [],
+        shipPresets: dataState.shipPresets || []
+    };
+    
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `LogiTrack_Data_${timestamp}.json`;
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log('[DataExport] エクスポート完了:', filename);
+    alert(`データをエクスポートしました: ${filename}`);
+};
+
+// JSONファイルからデータをインポート
+window.importAllData = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importData = JSON.parse(event.target.result);
+                
+                if (!importData.batches || !importData.masters) {
+                    alert('無効なデータ形式です。');
+                    return;
+                }
+                
+                const confirmMsg = `以下のデータをインポートしますか？\n\n` +
+                    `- ロット数: ${importData.batches.length}\n` +
+                    `- エクスポート日時: ${importData.exportedAt || '不明'}\n\n` +
+                    `※現在のデータは上書きされます。`;
+                
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                // データを復元
+                const dataState = window.state;
+                if (dataState) {
+                    dataState.batches = importData.batches || [];
+                    dataState.masters = importData.masters || {};
+                    dataState.mapPoints = importData.mapPoints || dataState.mapPoints;
+                    dataState.alerts = importData.alerts || [];
+                    dataState.truckMaster = importData.truckMaster || [];
+                    dataState.shipPresets = importData.shipPresets || [];
+                    
+                    // 保存と再描画
+                    if (typeof saveState === 'function') {
+                        saveState();
+                    }
+                    if (typeof renderBatches === 'function') {
+                        renderBatches();
+                    }
+                    if (typeof renderTruckTracking === 'function') {
+                        renderTruckTracking();
+                    }
+                    if (typeof renderEntryRegistered === 'function') {
+                        renderEntryRegistered();
+                    }
+                    if (typeof renderHistory === 'function') {
+                        renderHistory();
+                    }
+                    if (typeof updateFormOptions === 'function') {
+                        updateFormOptions();
+                    }
+                    
+                    console.log('[DataImport] インポート完了');
+                    alert('データをインポートしました。');
+                }
+            } catch (err) {
+                console.error('[DataImport] エラー:', err);
+                alert('データの読み込みに失敗しました: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    
+    input.click();
+};
+
+// Firestoreからデータをエクスポート（バックアップ用）
+window.exportFromFirestore = async function() {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+        alert('Firestoreが初期化されていません。');
+        return;
+    }
+    
+    try {
+        const db = firebase.firestore();
+        const exportData = {
+            exportedAt: new Date().toISOString(),
+            version: '1.0',
+            source: 'firestore'
+        };
+        
+        // lotsコレクションを取得
+        const lotsSnapshot = await db.collection('lots').get();
+        exportData.lots = [];
+        lotsSnapshot.forEach(doc => {
+            exportData.lots.push({ id: doc.id, ...doc.data() });
+        });
+        
+        // mastersコレクションを取得
+        const mastersSnapshot = await db.collection('masters').get();
+        exportData.masters = {};
+        mastersSnapshot.forEach(doc => {
+            exportData.masters[doc.id] = doc.data();
+        });
+        
+        const jsonStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `LogiTrack_Firestore_${timestamp}.json`;
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log('[FirestoreExport] エクスポート完了:', filename);
+        alert(`Firestoreデータをエクスポートしました: ${filename}\nロット数: ${exportData.lots.length}`);
+    } catch (err) {
+        console.error('[FirestoreExport] エラー:', err);
+        alert('Firestoreからのエクスポートに失敗しました: ' + err.message);
+    }
+};
+
+// ヘルプ：使用可能なバックアップコマンドを表示
+window.backupHelp = function() {
+    console.log(`
+========================================
+LogiTrack バックアップ機能
+========================================
+
+【データエクスポート/インポート】
+  window.exportAllData()     - ローカルデータをJSONファイルにエクスポート
+  window.importAllData()     - JSONファイルからデータをインポート
+  window.exportFromFirestore() - Firestoreからデータをエクスポート
+
+【自動ステータス更新】
+  window.forceCheckStatuses() - ステータスを手動でチェック
+
+【使い方】
+  1. ブラウザのコンソール（F12）を開く
+  2. 上記のコマンドを入力してEnter
+
+========================================
+`);
+    alert('バックアップコマンドの一覧をコンソールに表示しました。\nF12でコンソールを確認してください。');
+};
+
+console.log('[LogiTrack] バックアップ機能が利用可能です。window.backupHelp() でヘルプを表示できます。');

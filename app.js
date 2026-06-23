@@ -171,6 +171,21 @@ function initializeApplication() {
         if (portScheduleSetupDone) return;
         portScheduleSetupDone = true;
 
+        // 港入港スケジュールのカレンダー(soma-port)を環境に応じて読み込む。
+        // 同一サイトにビルド済みの soma-port があればそれを使う（本番 / ビルド版のローカル配信）。
+        // 無ければ Vite開発サーバ(http://localhost:5173/soma-port/) にフォールバック（ソースのまま開発時）。
+        try {
+            const frame = document.getElementById('port-schedule-calendar-frame');
+            if (frame) {
+                const useViteFallback = () => { frame.src = 'http://localhost:5173/soma-port/'; };
+                fetch('soma-port/index.html', { method: 'HEAD' })
+                    .then((r) => { frame.src = r.ok ? 'soma-port/' : 'http://localhost:5173/soma-port/'; })
+                    .catch(useViteFallback);
+            }
+        } catch (e) {
+            console.error('港スケジュールiframe設定エラー:', e);
+        }
+
         // タブ切替（カレンダー / PDF-JPG）
         const tabCalendarBtn = document.getElementById('port-schedule-tab-calendar');
         const tabPreviewBtn = document.getElementById('port-schedule-tab-preview');
@@ -1384,6 +1399,65 @@ function initializeApplication() {
     }
 
     // --- Rendering ---
+    // ダッシュボードのKPIカードを実データから算出して更新する
+    function renderKpis() {
+        try {
+            const batches = Array.isArray(state.batches) ? state.batches : [];
+            const num = (v) => {
+                const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+                return isNaN(n) ? 0 : n;
+            };
+            const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
+            const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            const setHtml = (id, v) => { const el = document.getElementById(id); if (el) el.innerHTML = v; };
+
+            // 稼働中とみなすステータス（荷卸し完了・完了は除く）
+            const activeStatuses = ['輸送中', '積込待ち', '積込中', '荷卸し中'];
+            const doneStatuses = ['荷卸し完了', '完了'];
+
+            const seaBatches = batches.filter(b => b.type === 'sea');
+            const landBatches = batches.filter(b => b.type !== 'sea');
+            const seaActive = seaBatches.filter(b => activeStatuses.includes(b.status));
+            const landActive = landBatches.filter(b => activeStatuses.includes(b.status));
+
+            // 1ロットの代表トン数（重量t → 総t → 数量m3 → 積載 の優先順）
+            const lotTon = (b) => num(b.weightTonnage) || num(b.grossTonnage) || num(b.volume) || num(b.capacity);
+
+            // 履歴（完了済み）のトン数
+            const histTon = (Array.isArray(state.history) ? state.history : [])
+                .reduce((s, h) => s + num(h.amount), 0);
+            // 総積込量：進行中ロット + 完了履歴 の累計トン数
+            const totalLoad = batches.reduce((s, b) => s + lotTon(b), 0) + histTon;
+            // 最終埋立完了：荷卸し完了/完了ロット + 履歴 の合計トン数
+            const landfillDone = batches.filter(b => doneStatuses.includes(b.status))
+                .reduce((s, b) => s + lotTon(b), 0) + histTon;
+
+            // 稼働台数の分母（マスタ台数、無ければ登録数）
+            const totalShips = new Set(
+                [...seaBatches.map(b => b.name), ...((state.masters && state.masters.vessels) || [])].filter(Boolean)
+            ).size || seaBatches.length;
+            const totalTrucks = ((state.masters && state.masters.trucks) || []).length || landBatches.length;
+
+            setHtml('kpi-total-load', `${fmt(totalLoad)} <span class="unit">t</span>`);
+            setText('kpi-total-load-sub', `登録ロット ${batches.length}件`);
+
+            const shipRate = totalShips ? Math.round(seaActive.length / totalShips * 100) : 0;
+            setText('kpi-ship-active', `${seaActive.length} / ${totalShips}`);
+            setText('kpi-ship-rate', `稼働率 ${shipRate}%`);
+
+            const truckRate = totalTrucks ? Math.round(landActive.length / totalTrucks * 100) : 0;
+            setText('kpi-truck-active', `${landActive.length} / ${totalTrucks}`);
+            setText('kpi-truck-rate', `稼働率 ${truckRate}%`);
+
+            setHtml('kpi-landfill-done', `${fmt(landfillDone)} <span class="unit">t</span>`);
+            const progRate = totalLoad ? Math.min(100, Math.round(landfillDone / totalLoad * 100)) : 0;
+            const prog = document.getElementById('kpi-landfill-progress');
+            if (prog) prog.style.width = progRate + '%';
+        } catch (e) {
+            console.error('renderKpis エラー:', e);
+        }
+    }
+
     function renderBatches() {
         try {
             const seaBody = document.querySelector('#batch-table-sea tbody');
@@ -1463,6 +1537,7 @@ function initializeApplication() {
 
             renderShipTracking();
             renderTruckTracking();
+            renderKpis();
         } catch (e) {
             console.error('renderBatches エラー:', e);
         }
@@ -1538,39 +1613,9 @@ function initializeApplication() {
         // 船名リストを取得（船名を除外するため）
         const vesselNames = state.masters?.vessels || [];
         
-        // 19時以降は「輸送中（本日港通行予定）」を履歴へ移動
+        // ステータスの自動遷移（待機→輸送中→履歴）は checkAndUpdateStatuses（定期更新）が
+        // 一元管理する。ここでは現在のフェーズに応じてカンバンの列に振り分けるだけ（表示専用）。
         const now = new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const moveToHistory = [];
-        state.batches = state.batches.filter(b => {
-            if (b.type !== 'land') return true;
-            if (b.status !== '輸送中') return true;
-            if (!b.dispatchDate) return true;
-            if (b.dispatchDate !== todayStr) return true;
-            if (now.getHours() < 19) return true;
-            moveToHistory.push(b);
-            return false;
-        });
-        if (moveToHistory.length) {
-            moveToHistory.forEach(b => {
-                const historyItem = {
-                    id: b.id,
-                    name: b.name,
-                    company: b.company,
-                    type: b.type,
-                    location: b.location,
-                    status: '完了',
-                    site: b.site,
-                    completedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-                    amount: b.capacity || ''
-                };
-                state.history.push(historyItem);
-                // Firestore: active lots から削除し、history に保存
-                firestoreDeleteLot(b.id).catch(() => {});
-                firestoreUpsertHistory(historyItem).catch(() => {});
-            });
-            saveState();
-        }
 
         // ダンプ位置画面には、当日になった entry_registered も移行対象に含める
         // また、船名（vessels）も除外する（誤ってtype=landで登録された船を除外）
@@ -1587,55 +1632,25 @@ function initializeApplication() {
         // Count Map
         const countMap = { 'standby': 0, '輸送中': 0 };
 
-        let statusChanged = false;
         trucks.forEach(t => {
-            const originalStatus = t.status || 'standby';
-            let statusKey = originalStatus;
-            let listKey = 'standby';
-            
-            // 港通行予定日が今日の場合は「輸送中」列に表示（前日に配車が組まれ、当日になったら自動的に移動）
-            // または、既に輸送中ステータスの場合は「輸送中」列に表示
-            if (originalStatus === '輸送中') {
+            const status = t.status || 'standby';
+            // 履歴/完了は表示しない
+            if (status === '完了' || status === 'completed' || status === 'history') return;
+            // 手動の別工程（積込中・荷卸し中・荷卸し完了）はカンバンに出さない
+            if (status === '積込中' || status === '荷卸し中' || status === '荷卸し完了') return;
+
+            // 列の振り分け（表示専用・状態は変更しない）
+            let listKey;
+            if (status === '輸送中') {
                 listKey = '輸送中';
-            } else {
-                const dispatchDate = t.dispatchDate || '';
-                if (dispatchDate && originalStatus === 'entry_registered') {
-                    // 配車予定日が組まれたら「入場済み / 待機」へ移動
-                    t.status = 'standby';
-                    statusChanged = true;
-                }
-                if (dispatchDate === todayStr && t.status !== 'entry_registered') {
-                    // 当日6:00以降に「輸送中」へ移動
-                    const isAfterSix = now.getHours() >= 6;
-                    if (!isAfterSix) {
-                        listKey = 'standby';
-                        statusKey = 'standby';
-                        return;
-                    }
-                // 当日のバッチは「輸送中」列に表示（当日になったら自動的に移動）
-                // ただし、キャンセル処理中のバッチ（window.originalBatchStatusが設定されている）は自動更新をスキップ
-                if (window.originalBatchId && window.originalBatchId === t.id && window.originalBatchStatus) {
-                    // キャンセル処理中のバッチは、元のステータスのままにする
-                    listKey = 'standby';
-                    statusKey = 'standby';
-                } else {
-                    listKey = '輸送中';
-                    statusKey = '輸送中';
-                    // ステータスがまだ更新されていない場合は、自動的に更新する
-                    if (t.status !== '輸送中') {
-                        t.status = '輸送中';
-                        statusChanged = true;
-                    }
-                }
-                } else if (originalStatus === 'standby' || originalStatus === '積込待ち' || originalStatus === 'entry_registered') {
-                // standbyまたは積込待ちは「入場済み/待機」列に表示（前日に配車が組まれた状態）
+            } else if (window.originalBatchId && window.originalBatchId === t.id && window.originalBatchStatus) {
+                // 編集/キャンセル処理中のバッチは待機のままにする
                 listKey = 'standby';
-                statusKey = 'standby'; // 表示用のステータスキーを統一
-                } else {
-                // その他のステータス（積込中、荷卸し中、荷卸し完了など）は表示しない
-                return; // このダンプは表示しない
+            } else {
+                const phase = computeDumpPhase(t, now);
+                listKey = (phase === 'transport') ? '輸送中' : 'standby';
             }
-            }
+            const statusKey = listKey;
 
             countMap[statusKey] = (countMap[statusKey] || 0) + 1;
 
@@ -1693,10 +1708,6 @@ function initializeApplication() {
             
             if (lists[listKey]) lists[listKey].appendChild(card);
         });
-
-        if (statusChanged) {
-            saveState();
-        }
 
         // Update counts
         if (counts['standby']) counts['standby'].textContent = countMap['standby'] || 0;
@@ -4397,10 +4408,9 @@ return;
                 newBatch.driver = document.getElementById('lot-driver').value;
                 newBatch.capacity = document.getElementById('lot-capacity').value;
                 newBatch.category = normalizeTruckCategory(document.getElementById('lot-truck-category').value);
-                // 配車予定日（フォームから取得、なければ今日の日付）
-                const dispatchDateValue = document.getElementById('dispatch-date')?.value || '';
-                const today = new Date();
-                newBatch.dispatchDate = dispatchDateValue || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                // 配車予定日（フォームから取得）。未入力なら空のままにし、
+                // 輸送日は「登録の翌日」を自動採用する（computeDumpPhase が判定）。
+                newBatch.dispatchDate = document.getElementById('dispatch-date')?.value || '';
                 // 荷元の船舶
                 newBatch.parentShipId = parentShipSelect?.value || '';
                 // 港通行予定日
@@ -4928,6 +4938,45 @@ window.addEventListener('load', () => {
 
 let autoStatusUpdaterInterval = null;
 
+// ========================================
+// ダンプの自動遷移ルール（共通判定）
+// ・輸送日 = 配車予定日(dispatchDate)。未入力なら「登録日の翌日」。
+// ・輸送日の 07:00 になったら「輸送中」、同日 19:00 になったら「履歴」。
+// ・すべて現地時刻(JST)のタイムスタンプ比較。アプリを閉じていても、
+//   次に開いた時点の現在時刻で正しい段階に追いつく（catch-up）。
+// ========================================
+function localDateStr(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 輸送日(YYYY-MM-DD)を返す。判定不可なら null。
+function getDumpTransportDate(batch) {
+    if (batch && batch.dispatchDate) return String(batch.dispatchDate).slice(0, 10);
+    let base = null;
+    if (batch && batch.createdAt) {
+        base = new Date(batch.createdAt);
+    } else if (batch && batch.id && /LOT-(\d{8})-/.test(batch.id)) {
+        const m = batch.id.match(/LOT-(\d{8})-/)[1];
+        base = new Date(`${m.slice(0, 4)}-${m.slice(4, 6)}-${m.slice(6, 8)}T00:00:00`);
+    }
+    if (!base || isNaN(base.getTime())) return null;
+    base.setDate(base.getDate() + 1); // 登録の翌日
+    return localDateStr(base);
+}
+
+// 現在のフェーズを返す: 'standby'(待機) | 'transport'(輸送中) | 'history'(履歴) | null(判定不可)
+function computeDumpPhase(batch, now) {
+    const td = getDumpTransportDate(batch);
+    if (!td) return null;
+    const [y, mo, da] = td.split('-').map(Number);
+    if (!y || !mo || !da) return null;
+    const transportStart = new Date(y, mo - 1, da, 7, 0, 0, 0);  // 当日 07:00（現地）
+    const historyStart = new Date(y, mo - 1, da, 19, 0, 0, 0);   // 当日 19:00（現地）
+    if (now.getTime() >= historyStart.getTime()) return 'history';
+    if (now.getTime() >= transportStart.getTime()) return 'transport';
+    return 'standby';
+}
+
 function startAutoStatusUpdater() {
     // 既に起動中の場合は停止
     if (autoStatusUpdaterInterval) {
@@ -4986,78 +5035,107 @@ function checkAndUpdateStatuses() {
     }
     
     dataState.batches.forEach(batch => {
-        if (!batch || batch.status === 'completed' || batch.status === 'history') {
-            return; // 既に完了/履歴のものはスキップ
+        if (!batch) return;
+        
+        // 既にcompletedだがbatchesに残っているものをhistoryに移動
+        if (batch.status === 'completed' || batch.status === 'history') {
+            movedToHistory.push({ type: batch.type === 'sea' ? '船舶' : 'ダンプ', id: batch.id, name: batch.name });
+            updated = true;
+            return;
         }
         
         // ========================================
-        // 【船舶】3日後に運搬履歴へ自動移動
+        // 【船舶】登録から24h→輸送中、48h→荷卸し中、72h→運搬履歴
         // ========================================
         if (batch.type === 'sea') {
             const createdAt = getOrEstimateCreatedAt(batch);
-            const lastUpdatedAt = batch.lastUpdatedAt ? new Date(batch.lastUpdatedAt) : null;
             
             if (createdAt) {
-                const threeDaysAgo = new Date(now.getTime() - (3 * 24 * 60 * 60 * 1000));
+                const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
                 
-                // 最終更新日時がある場合はそれを使用、なければ作成日時を使用
-                const lastActivity = lastUpdatedAt || createdAt;
+                console.log(`[AutoStatusUpdater] 船舶チェック: ${batch.name}, 作成=${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString()}, 経過=${hoursSinceCreation.toFixed(1)}時間, 現ステータス=${batch.status}`);
                 
-                console.log(`[AutoStatusUpdater] 船舶チェック: ${batch.name}, 作成=${createdAt.toLocaleDateString()}, 最終更新=${lastActivity.toLocaleDateString()}, 3日前=${threeDaysAgo.toLocaleDateString()}`);
-                
-                if (lastActivity < threeDaysAgo) {
-                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を運搬履歴に移動`);
+                // 72時間（3日）経過 → 運搬履歴へ
+                if (hoursSinceCreation >= 72) {
+                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を運搬履歴に移動（72時間経過）`);
                     batch.status = 'completed';
                     batch.completedAt = now.toISOString();
                     movedToHistory.push({ type: '船舶', id: batch.id, name: batch.name });
                     updated = true;
                 }
-            }
-        }
-        
-        // ========================================
-        // 【ダンプ】配車日AM7:00に輸送中へ、PM19:00に運搬履歴へ
-        // ========================================
-        if (batch.type === 'land') {
-            const dispatchDate = batch.dispatchDate || batch.portEntryDate;
-            
-            if (dispatchDate) {
-                const dispatchDateObj = new Date(dispatchDate);
-                const todayStr = now.toISOString().split('T')[0];
-                const dispatchDateStr = dispatchDateObj.toISOString().split('T')[0];
-                
-                // 配車日が今日の場合
-                if (dispatchDateStr === todayStr) {
-                    // AM 7:00以降で、まだ「standby」または「entry_registered」の場合 → 「輸送中」へ
-                    if (currentHour >= 7 && (batch.status === 'standby' || batch.status === 'entry_registered')) {
-                        console.log(`[AutoStatusUpdater] ダンプ ${batch.id} (${batch.name}) を輸送中に移行`);
-                        batch.status = '輸送中';
-                        batch.transportStartedAt = now.toISOString();
-                        updated = true;
-                    }
-                    
-                    // PM 19:00以降で、「輸送中」の場合 → 「運搬履歴」へ
-                    if (currentHour >= 19 && batch.status === '輸送中') {
-                        console.log(`[AutoStatusUpdater] ダンプ ${batch.id} (${batch.name}) を運搬履歴に移動`);
-                        batch.status = 'completed';
-                        batch.completedAt = now.toISOString();
-                        movedToHistory.push({ type: 'ダンプ', id: batch.id, name: batch.name });
-                        updated = true;
-                    }
+                // 48時間（2日）経過 → 荷卸し中
+                else if (hoursSinceCreation >= 48 && batch.status !== '荷卸し中' && batch.status !== '荷卸し完了') {
+                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を荷卸し中に変更（48時間経過）`);
+                    batch.status = '荷卸し中';
+                    updated = true;
                 }
-                
-                // 配車日が過去の場合（19:00を過ぎた翌日以降）
-                if (dispatchDateStr < todayStr && batch.status !== 'completed') {
-                    // まだ完了していない場合は運搬履歴へ
-                    console.log(`[AutoStatusUpdater] ダンプ ${batch.id} (${batch.name}) を運搬履歴に移動（配車日経過）`);
-                    batch.status = 'completed';
-                    batch.completedAt = now.toISOString();
-                    movedToHistory.push({ type: 'ダンプ', id: batch.id, name: batch.name });
+                // 24時間（1日）経過 → 輸送中
+                else if (hoursSinceCreation >= 24 && batch.status !== '輸送中' && batch.status !== '荷卸し中' && batch.status !== '荷卸し完了') {
+                    console.log(`[AutoStatusUpdater] 船舶 ${batch.id} (${batch.name}) を輸送中に変更（24時間経過）`);
+                    batch.status = '輸送中';
                     updated = true;
                 }
             }
         }
+        
+        // ========================================
+        // 【ダンプ】輸送日 07:00→輸送中、同日 19:00→運搬履歴（共通ルール）
+        // ========================================
+        if (batch.type === 'land') {
+            // 既に完了/履歴のものは対象外
+            if (batch.status === 'completed' || batch.status === '完了' || batch.status === 'history') return;
+            // 手動の途中工程（積込中・荷卸し中など）は自動で上書きしない
+            const manualMidStatuses = ['積込中', '荷卸し中', '荷卸し完了'];
+            const phase = computeDumpPhase(batch, now);
+            if (!phase) return; // 輸送日が判定できない場合は何もしない
+
+            if (phase === 'history') {
+                // 19:00を過ぎたら履歴へ（アプリを閉じていた場合の遅れも含めて追いつく）
+                batch.status = 'completed';
+                batch.completedAt = batch.completedAt || now.toISOString();
+                movedToHistory.push({ type: 'ダンプ', id: batch.id, name: batch.name });
+                updated = true;
+            } else if (phase === 'transport') {
+                // 07:00〜19:00 は輸送中（待機系のステータスのみ自動で移行）
+                if (!manualMidStatuses.includes(batch.status) && batch.status !== '輸送中') {
+                    batch.status = '輸送中';
+                    batch.transportStartedAt = batch.transportStartedAt || now.toISOString();
+                    updated = true;
+                }
+            }
+            // phase === 'standby' は待機のまま（何もしない）
+        }
     });
+    
+    // completedになったバッチをhistoryに移動
+    if (movedToHistory.length > 0) {
+        movedToHistory.forEach(item => {
+            const batchIndex = dataState.batches.findIndex(b => b.id === item.id);
+            if (batchIndex !== -1) {
+                const batch = dataState.batches[batchIndex];
+                
+                // historyに追加
+                if (!dataState.history) dataState.history = [];
+                dataState.history.unshift({
+                    ...batch,
+                    completedAt: batch.completedAt || now.toISOString()
+                });
+                
+                // batchesから削除
+                dataState.batches.splice(batchIndex, 1);
+                
+                // Firestoreにも反映
+                if (typeof firestoreUpsertHistory === 'function') {
+                    firestoreUpsertHistory(batch).catch(() => {});
+                }
+                if (typeof firestoreDeleteLot === 'function') {
+                    firestoreDeleteLot(batch.id).catch(() => {});
+                }
+                
+                console.log(`[AutoStatusUpdater] ${item.type} ${item.name} をhistoryに移動完了`);
+            }
+        });
+    }
     
     // 更新があった場合は保存と再描画
     if (updated) {

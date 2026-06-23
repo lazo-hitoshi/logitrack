@@ -59,3 +59,6 @@ browser_recordings/
 
 # 履歴フォルダ（IDE自動生成）
 .history/
+
+# バックアップ退避先（リポジトリには含めない）
+_archive/

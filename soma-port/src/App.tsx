@@ -56,6 +56,17 @@ type BerthSchedule = {
   createdAt?: any;
 };
 
+// 予定の移動履歴（ドラッグ＆ドロップや編集での日付/バース変更を記録）
+type MoveLog = {
+  id: string;
+  shipName: string;
+  fromDate: string;
+  toDate: string;
+  fromBerth?: string;
+  toBerth?: string;
+  changedAt: string; // ISO
+};
+
 let app: any;
 let auth: any;
 let db: any;
@@ -157,14 +168,23 @@ const Card = ({ children, className = "" }: { children: React.ReactNode, classNa
 const MonthlyCalendarView = ({
   schedules,
   onDateSelect,
-  currentDate
+  currentDate,
+  onMoveEntry,
+  onSelectShip
 }: {
   schedules: BerthSchedule[],
   onDateSelect: (date: string) => void,
-  currentDate: string
+  currentDate: string,
+  onMoveEntry?: (entryId: string, toDate: string) => void,
+  onSelectShip?: (s: BerthSchedule) => void
 }) => {
-  const startDate = new Date('2026-01-11');
-  const endDate = new Date('2026-02-07');
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  // currentDateを基準に、その月の1日から末日までを表示
+  const baseDate = new Date(currentDate);
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const startDate = new Date(year, month, 1);
+  const endDate = new Date(year, month + 1, 0); // 月末日
 
   const calendarDays: Date[] = [];
   let d = new Date(startDate);
@@ -192,15 +212,27 @@ const MonthlyCalendarView = ({
           const dateStr = day.toISOString().split('T')[0];
           const isSelected = dateStr === currentDate;
           const daySchedules = getSchedulesForDate(day);
-          const isCurrentMonth = day.getMonth() === 0;
+          // 表示中の月かどうか（以前は1月固定のバグで全日が薄く表示されていた）
+          const isCurrentMonth = day.getMonth() === month;
 
           return (
-            <button
+            <div
               key={i}
+              role="button"
               onClick={() => onDateSelect(dateStr)}
+              onDragOver={(e) => { if (onMoveEntry) { e.preventDefault(); setDragOverDate(dateStr); } }}
+              onDragLeave={() => setDragOverDate((prev) => (prev === dateStr ? null : prev))}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverDate(null);
+                const id = e.dataTransfer.getData('text/plain');
+                if (id && onMoveEntry) onMoveEntry(id, dateStr);
+              }}
               className={`
-                min-h-[90px] p-2 rounded-xl border text-left flex flex-col transition-all
-                ${isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50 border-indigo-200' : 'border-slate-100 bg-white hover:bg-slate-50'}
+                min-h-[120px] p-2 rounded-xl border text-left flex flex-col transition-all cursor-pointer
+                ${dragOverDate === dateStr
+                  ? 'ring-2 ring-emerald-400 bg-emerald-50 border-emerald-300'
+                  : isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50 border-indigo-200' : 'border-slate-100 bg-white hover:bg-slate-50'}
                 ${!isCurrentMonth ? 'opacity-40' : ''}
               `}
             >
@@ -215,15 +247,22 @@ const MonthlyCalendarView = ({
                 )}
               </div>
               <div className="space-y-1 flex-1 w-full overflow-hidden">
-                {daySchedules.slice(0, 3).map((s, idx) => (
-                  <div key={idx} className="text-[9px] truncate w-full flex items-center bg-white border border-slate-100 rounded px-1 text-slate-600">
-                    <div className={`w-1 h-1 rounded-full mr-1 ${s.status === '作業中' ? 'bg-indigo-500' : s.status === '完了' ? 'bg-slate-300' : 'bg-emerald-500'}`}></div>
+                {daySchedules.slice(0, 4).map((s, idx) => (
+                  <div
+                    key={idx}
+                    draggable={!!onMoveEntry && !!s.id}
+                    onDragStart={(e) => { if (s.id) { e.dataTransfer.setData('text/plain', s.id); e.dataTransfer.effectAllowed = 'move'; } }}
+                    onClick={(e) => { e.stopPropagation(); if (onSelectShip) onSelectShip(s); }}
+                    title="ドラッグで別の日へ移動 / クリックで編集"
+                    className="text-[11px] leading-tight truncate w-full flex items-center bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-slate-800 font-semibold cursor-grab active:cursor-grabbing hover:bg-indigo-50 hover:border-indigo-300"
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full mr-1 shrink-0 ${s.status === '作業中' ? 'bg-indigo-500' : s.status === '完了' ? 'bg-slate-400' : 'bg-emerald-500'}`}></div>
                     {s.shipName}
                   </div>
                 ))}
-                {daySchedules.length > 3 && <div className="text-[9px] text-slate-400 pl-1 font-bold">+他{daySchedules.length - 3}件</div>}
+                {daySchedules.length > 4 && <div className="text-[10px] text-slate-600 pl-1 font-bold">+他{daySchedules.length - 4}件</div>}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -596,15 +635,19 @@ async function pdfToJpegDataUrls(file: File, maxPages = 1): Promise<string[]> {
 
   for (let p = 1; p <= pageCount; p++) {
     const page = await doc.getPage(p);
-    // 無料枠で429に当たりにくくするため、解像度を控えめにする（表が読める範囲で）
-    const viewport = page.getViewport({ scale: 1.2 });
+    // 密なガントチャートの文字をAIが読めるよう、解像度を上げる（精度優先）。
+    // ただし巨大化しすぎないよう、レンダリング後の横幅が上限を超えたらスケールを自動調整。
+    const baseViewport = page.getViewport({ scale: 1 });
+    const MAX_WIDTH = 3200; // これ以上はAI側で縮小されるため頭打ち
+    const targetScale = Math.min(2.2, MAX_WIDTH / Math.max(1, baseViewport.width));
+    const viewport = page.getViewport({ scale: Math.max(1.6, targetScale) });
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('canvas context error');
     canvas.width = Math.floor(viewport.width);
     canvas.height = Math.floor(viewport.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
-    out.push(canvas.toDataURL('image/jpeg', 0.7));
+    out.push(canvas.toDataURL('image/jpeg', 0.85));
   }
 
   return out;
@@ -628,7 +671,10 @@ async function pdfToJpegDataUrlsForOpenAi(file: File, maxPages = 1): Promise<str
     return Math.floor((b64.length * 3) / 4);
   };
 
-  const buildCrops = async (page: any, scale: number, quality: number) => {
+  // 縦に帯（バンド）分割する。各バンドは「全幅（=左端のバース名＋全日付）」を保つので、
+  // どのバンドでもバース番号が必ず写り、行ずれ・取りこぼしが起きにくい。
+  const BAND_COUNT = 3;
+  const buildBands = async (page: any, scale: number, quality: number) => {
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -637,62 +683,54 @@ async function pdfToJpegDataUrlsForOpenAi(file: File, maxPages = 1): Promise<str
     canvas.height = Math.floor(viewport.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
 
-    const marginX = Math.floor(canvas.width * 0.06);
-    const marginY = Math.floor(canvas.height * 0.10);
-    const usableW = Math.max(1, canvas.width - marginX * 2);
+    const marginY = Math.floor(canvas.height * 0.03);
     const usableH = Math.max(1, canvas.height - marginY * 2);
-    const overlap = Math.floor(usableW * 0.06);
-    const halfW = Math.floor(usableW / 2) + overlap;
+    const bandH = Math.floor(usableH / BAND_COUNT);
+    const overlap = Math.floor(bandH * 0.14); // バンド境界の船を取りこぼさないよう重ねる
 
-    const makeCrop = (sx: number, sw: number) => {
-      const cropCanvas = document.createElement('canvas');
-      const cropCtx = cropCanvas.getContext('2d');
-      if (!cropCtx) throw new Error('canvas context error');
-      cropCanvas.width = sw;
-      cropCanvas.height = usableH;
-      cropCtx.drawImage(canvas, sx, marginY, sw, usableH, 0, 0, sw, usableH);
-      return cropCanvas.toDataURL('image/jpeg', quality);
-    };
-
-    const left = makeCrop(marginX, Math.min(usableW, halfW));
-    const rightStart = marginX + Math.max(0, usableW - halfW);
-    const right = makeCrop(rightStart, Math.min(usableW, halfW));
-    return { left, right };
+    const bands: string[] = [];
+    for (let i = 0; i < BAND_COUNT; i++) {
+      const sy = Math.max(0, marginY + i * bandH - (i > 0 ? overlap : 0));
+      const sh = Math.min(canvas.height - sy, bandH + overlap * (i > 0 ? 2 : 1));
+      const bandCanvas = document.createElement('canvas');
+      const bandCtx = bandCanvas.getContext('2d');
+      if (!bandCtx) throw new Error('canvas context error');
+      bandCanvas.width = canvas.width;
+      bandCanvas.height = sh;
+      bandCtx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+      bands.push(bandCanvas.toDataURL('image/jpeg', quality));
+    }
+    return bands;
   };
 
   for (let p = 1; p <= pageCount; p++) {
     const page = await doc.getPage(p);
-    // リクエストサイズ上限を考慮（目安 8MB）
-    const budget = 8 * 1024 * 1024;
+    // リクエストサイズ上限を考慮（目安 18MB / 全バンド合計）
+    const budget = 18 * 1024 * 1024;
     const candidates: Array<{ scale: number; quality: number }> = [
-      { scale: 2.2, quality: 0.86 },
-      { scale: 2.0, quality: 0.84 },
-      { scale: 1.8, quality: 0.82 },
-      { scale: 1.6, quality: 0.80 }
+      { scale: 2.4, quality: 0.85 },
+      { scale: 2.2, quality: 0.84 },
+      { scale: 2.0, quality: 0.82 },
+      { scale: 1.7, quality: 0.80 }
     ];
 
-    let picked: { left: string; right: string } | null = null;
+    let picked: string[] | null = null;
     for (const c of candidates) {
-      const { left, right } = await buildCrops(page, c.scale, c.quality);
-      const bytes = estimateBytes(left) + estimateBytes(right);
+      const bands = await buildBands(page, c.scale, c.quality);
+      const bytes = bands.reduce((s, b) => s + estimateBytes(b), 0);
       if (bytes <= budget) {
-        picked = { left, right };
+        picked = bands;
         break;
       }
     }
     if (!picked) {
-      // 最後の手段：最低設定でも入らない場合は片側だけ（情報欠けるが502は避ける）
-      const { left } = await buildCrops(page, 1.4, 0.75);
-      out.push(left);
-      break;
+      // 最後の手段：最低設定（情報が多少欠けても 502 を避ける）
+      picked = await buildBands(page, 1.5, 0.75);
     }
-
-    out.push(picked.left);
-    out.push(picked.right);
+    picked.forEach((b) => out.push(b));
   }
 
-  // Functionsは max 3 なので、基本は2枚（左右）だけ返す
-  return out.slice(0, 2);
+  return out.slice(0, BAND_COUNT);
 }
 
 async function fileToVisionImages(file: File): Promise<string[]> {
@@ -797,10 +835,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'schedule' | 'source'>('schedule');
   const [scheduleViewMode, setScheduleViewMode] = useState<'daily' | 'monthly'>('monthly');
   const [selectedShip, setSelectedShip] = useState<BerthSchedule | null>(null);
+  const [editDraft, setEditDraft] = useState<BerthSchedule | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [sourceFileType, setSourceFileType] = useState<string>('');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
-  const [currentDate, setCurrentDate] = useState<string>('2026-01-19');
+  const [currentDate, setCurrentDate] = useState<string>(() => {
+    // 今日の日付を初期値にする
+    return new Date().toISOString().split('T')[0];
+  });
   const [scheduleData, setScheduleData] = useState<BerthSchedule[]>([]);
   const [localScheduleData, setLocalScheduleData] = useState<BerthSchedule[]>(() => {
     try {
@@ -812,6 +854,16 @@ export default function App() {
       return [];
     }
   });
+  const [moveLogs, setMoveLogs] = useState<MoveLog[]>(() => {
+    try {
+      const raw = localStorage.getItem('soma_port_move_logs');
+      const v = raw ? JSON.parse(raw) : [];
+      return Array.isArray(v) ? (v as MoveLog[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showHistory, setShowHistory] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [isDataImported, setIsDataImported] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -826,9 +878,10 @@ export default function App() {
   const [analysisProvider, setAnalysisProvider] = useState<'gemini' | 'openai'>(() => {
     try {
       const v = localStorage.getItem('ai_provider');
-      return v === 'openai' ? 'openai' : 'gemini';
+      // 既定はOpenAI(gpt-4o)。明示的に gemini を選んだ場合のみ Gemini を使う。
+      return v === 'gemini' ? 'gemini' : 'openai';
     } catch {
-      return 'gemini';
+      return 'openai';
     }
   });
   const [showSettings, setShowSettings] = useState(false);
@@ -902,6 +955,18 @@ export default function App() {
     });
   }, [authAttempted, authReady, user]);
 
+  // 移動履歴の購読（ログイン時はFirestore、未ログイン時はlocalStorage）
+  useEffect(() => {
+    if (!authAttempted || !authReady || !user || !db) return;
+    const q = collection(db, 'artifacts', appId, 'public', 'data', 'scheduleLogs');
+    return onSnapshot(q, (snapshot) => {
+      const docs: MoveLog[] = [];
+      snapshot.forEach((d) => docs.push({ id: d.id, ...d.data() } as MoveLog));
+      docs.sort((a, b) => (b.changedAt || '').localeCompare(a.changedAt || ''));
+      setMoveLogs(docs.slice(0, 200));
+    }, () => { /* 履歴の取得失敗は致命的でないので無視 */ });
+  }, [authAttempted, authReady, user]);
+
   const effectiveScheduleData = useMemo(() => {
     return user && db ? scheduleData : localScheduleData;
   }, [user, scheduleData, localScheduleData]);
@@ -914,7 +979,56 @@ export default function App() {
     }
   }, [localScheduleData]);
 
+  useEffect(() => {
+    // 未ログイン時のみローカルへ保存（ログイン時はFirestoreが正）
+    if (user && db) return;
+    try {
+      localStorage.setItem('soma_port_move_logs', JSON.stringify(moveLogs.slice(0, 200)));
+    } catch {
+      // noop
+    }
+  }, [moveLogs, user]);
+
+  // ドラッグ＆ドロップ等で予定を別の日付へ移動し、履歴を残す
+  const handleMoveEntry = async (entryId: string, toDate: string) => {
+    const entry = effectiveScheduleData.find((s) => s.id === entryId);
+    if (!entry || !entry.id || !toDate || entry.date === toDate) return;
+    const fromDate = entry.date;
+    const updated: BerthSchedule = { ...entry, date: toDate };
+    const now = new Date();
+    const log: MoveLog = {
+      id: `log-${now.getTime()}-${Math.floor(Math.random() * 1000)}`,
+      shipName: entry.shipName,
+      fromDate,
+      toDate,
+      fromBerth: entry.berthName,
+      toBerth: entry.berthName,
+      changedAt: now.toISOString()
+    };
+    // 即時反映
+    setLocalScheduleData((prev) => {
+      const exists = prev.some((p) => p.id === entryId);
+      return exists ? prev.map((p) => (p.id === entryId ? updated : p)) : [...prev, updated];
+    });
+    setMoveLogs((prev) => [log, ...prev].slice(0, 200));
+    // 永続化
+    if (db && user) {
+      const sref = collection(db, 'artifacts', appId, 'public', 'data', 'schedules');
+      const lref = collection(db, 'artifacts', appId, 'public', 'data', 'scheduleLogs');
+      const batch = writeBatch(db);
+      batch.set(doc(sref, String(entry.id)), { ...updated });
+      batch.set(doc(lref, log.id), { ...log });
+      await batch.commit();
+    }
+    setCurrentDate(toDate);
+  };
+
   const dailySchedule = useMemo(() => effectiveScheduleData.filter(s => s.date === currentDate), [currentDate, effectiveScheduleData]);
+
+  // 船を選択したら編集フォームの下書きを初期化する
+  useEffect(() => {
+    setEditDraft(selectedShip ? { ...selectedShip } : null);
+  }, [selectedShip]);
 
   const handleAnalyzeFile = async () => {
     if (!sourceFile) {
@@ -960,9 +1074,14 @@ export default function App() {
         setLastError('注意: まだSign-in requiredのため、今回はローカル反映のみです（Firestoreへ保存されません）。上の案内どおり認証設定後に再実行してください。');
       }
 
+      // 取り込んだデータの最初の日付へカレンダーを移動し、月間表示ですぐ見えるようにする
+      // （PDFの予定月が当月と違っても「反映されていない」ように見えないため）
+      const importedDates = dataToImport.map((d) => d.date).filter(Boolean).sort();
+      if (importedDates.length) setCurrentDate(importedDates[0]);
+
       setIsAnalysing(false);
       setIsDataImported(true);
-      setScheduleViewMode('daily');
+      setScheduleViewMode('monthly');
       setTimeout(() => setActiveTab('schedule'), 300);
     } catch (e: any) {
       console.error(e);
@@ -986,6 +1105,86 @@ export default function App() {
     setSourceFileType(f.type || '');
     setIsDataImported(false);
     setZoomLevel(1);
+  };
+
+  // 1件の予定を追加/更新する（OCRのずれを手で直す用）。
+  // 保存すると date/berthName が反映され、正しい日付・バースの位置に移動する。
+  const upsertScheduleEntry = async (entry: BerthSchedule) => {
+    const now = new Date();
+    const id = entry.id && String(entry.id).trim() ? String(entry.id) : `local-${now.getTime()}`;
+    const clean: BerthSchedule = {
+      ...entry,
+      id,
+      date: String(entry.date || '').slice(0, 10),
+      berthName: String(entry.berthName || '').trim(),
+      shipName: String(entry.shipName || '').trim() || '未定',
+      eta: String(entry.eta || '').trim() || '08:00',
+      etd: String(entry.etd || '').trim() || '17:00',
+      cargo: String(entry.cargo || '').trim() || '未定',
+      status: ((String(entry.status || '予定').trim() || '予定') as BerthSchedule['status']),
+      trucksPlanned: Number(entry.trucksPlanned) || 0,
+      trucksArrived: Number(entry.trucksArrived) || 0
+    };
+    if (!clean.date || !clean.berthName) {
+      setLastError('保存できません：日付とバースは必須です。');
+      return;
+    }
+    setLastError('');
+    // 日付/バースが変わった編集は履歴に残す
+    const prevEntry = effectiveScheduleData.find(p => p.id === id);
+    let moveLog: MoveLog | null = null;
+    if (prevEntry && (prevEntry.date !== clean.date || prevEntry.berthName !== clean.berthName)) {
+      moveLog = {
+        id: `log-${now.getTime()}-${Math.floor(Math.random() * 1000)}`,
+        shipName: clean.shipName,
+        fromDate: prevEntry.date,
+        toDate: clean.date,
+        fromBerth: prevEntry.berthName,
+        toBerth: clean.berthName,
+        changedAt: now.toISOString()
+      };
+    }
+    // ローカル即時反映
+    setLocalScheduleData(prev => {
+      const exists = prev.some(p => p.id === id);
+      return exists ? prev.map(p => (p.id === id ? clean : p)) : [...prev, clean];
+    });
+    if (moveLog) setMoveLogs(prev => [moveLog as MoveLog, ...prev].slice(0, 200));
+    // Firestore 永続化（ログイン時）
+    if (db && user) {
+      const ref = collection(db, 'artifacts', appId, 'public', 'data', 'schedules');
+      const batch = writeBatch(db);
+      batch.set(doc(ref, id), { ...clean });
+      if (moveLog) {
+        const lref = collection(db, 'artifacts', appId, 'public', 'data', 'scheduleLogs');
+        batch.set(doc(lref, moveLog.id), { ...moveLog });
+      }
+      await batch.commit();
+    }
+    // 編集したデータの日付へ移動して、移動後の位置を確認できるようにする
+    setCurrentDate(clean.date);
+    setSelectedShip(null);
+  };
+
+  const deleteScheduleEntry = async (entry: BerthSchedule) => {
+    if (!entry.id) { setSelectedShip(null); return; }
+    if (!confirm(`「${entry.shipName}」(${entry.berthName}) を削除しますか？`)) return;
+    setLocalScheduleData(prev => prev.filter(p => p.id !== entry.id));
+    if (db && user) {
+      const ref = collection(db, 'artifacts', appId, 'public', 'data', 'schedules');
+      const batch = writeBatch(db);
+      batch.delete(doc(ref, String(entry.id)));
+      await batch.commit();
+    }
+    setSelectedShip(null);
+  };
+
+  const startNewEntry = () => {
+    setSelectedShip({
+      id: '', date: currentDate, berthName: '', shipName: '',
+      eta: '08:00', etd: '17:00', cargo: '未定', status: '予定',
+      trucksPlanned: 0, trucksArrived: 0
+    } as BerthSchedule);
   };
 
   const saveGeminiKey = (v: string) => {
@@ -1293,16 +1492,45 @@ export default function App() {
                 </div>
                 <div className="flex space-x-3">
                   <div className="flex items-center bg-white rounded-xl border border-slate-200 p-1 shadow-sm">
-                    <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 1); setCurrentDate(d.toISOString().split('T')[0]); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"><ChevronLeft size={20} /></button>
-                    <span className="text-sm font-mono font-black w-40 text-center text-slate-700">{currentDate}</span>
-                    <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 1); setCurrentDate(d.toISOString().split('T')[0]); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"><ChevronRight size={20} /></button>
+                    <button onClick={() => { const d = new Date(currentDate); if (scheduleViewMode === 'monthly') d.setMonth(d.getMonth() - 1); else d.setDate(d.getDate() - 1); setCurrentDate(d.toISOString().split('T')[0]); }} title={scheduleViewMode === 'monthly' ? '前の月' : '前の日'} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"><ChevronLeft size={20} /></button>
+                    <input type="date" value={currentDate} onChange={(e) => { if (e.target.value) setCurrentDate(e.target.value); }} title="日付を直接選べます" className="text-sm font-mono font-black w-40 text-center text-slate-700 bg-transparent outline-none cursor-pointer" />
+                    <button onClick={() => { const d = new Date(currentDate); if (scheduleViewMode === 'monthly') d.setMonth(d.getMonth() + 1); else d.setDate(d.getDate() + 1); setCurrentDate(d.toISOString().split('T')[0]); }} title={scheduleViewMode === 'monthly' ? '次の月' : '次の日'} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"><ChevronRight size={20} /></button>
                   </div>
                   <div className="flex bg-white rounded-xl border border-slate-200 p-1 shadow-sm font-bold">
                     <button onClick={() => setScheduleViewMode('monthly')} className={`px-4 py-1.5 rounded-lg text-xs transition-all ${scheduleViewMode === 'monthly' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>月間</button>
                     <button onClick={() => setScheduleViewMode('daily')} className={`px-4 py-1.5 rounded-lg text-xs transition-all ${scheduleViewMode === 'daily' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>日次</button>
                   </div>
+                  <button onClick={() => setShowHistory(true)} title="移動・変更の履歴" className="bg-white rounded-xl border border-slate-200 px-3 py-1.5 shadow-sm text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors">🕘 変更履歴{moveLogs.length ? `（${moveLogs.length}）` : ''}</button>
                 </div>
               </div>
+
+              {showHistory && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowHistory(false)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                      <h3 className="font-black text-slate-800">🕘 変更・移動の履歴</h3>
+                      <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+                    </div>
+                    <div className="overflow-y-auto p-4 space-y-2">
+                      {moveLogs.length === 0 ? (
+                        <p className="text-center text-slate-400 text-sm py-8 font-bold">まだ移動の履歴はありません。<br />カレンダーで船を別の日へドラッグすると記録されます。</p>
+                      ) : (
+                        moveLogs.map((log) => (
+                          <div key={log.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs">
+                            <div className="min-w-0">
+                              <div className="font-black text-slate-800 truncate">{log.shipName || '（無名）'}</div>
+                              <div className="text-slate-500 font-mono mt-0.5">{log.fromDate} <span className="text-indigo-500 font-bold">→</span> {log.toDate}</div>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-bold whitespace-nowrap ml-2">
+                              {(() => { try { return new Date(log.changedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 xl:grid-cols-4 gap-8 min-h-[600px]">
                 <div className="xl:col-span-3">
@@ -1310,51 +1538,79 @@ export default function App() {
                     {scheduleViewMode === 'daily' ? (
                       <DailyScheduleView schedules={dailySchedule} onSelect={setSelectedShip} date={currentDate} />
                     ) : (
-                      <MonthlyCalendarView schedules={effectiveScheduleData} currentDate={currentDate} onDateSelect={(d) => { setCurrentDate(d); setScheduleViewMode('daily'); }} />
+                      <MonthlyCalendarView schedules={effectiveScheduleData} currentDate={currentDate} onDateSelect={(d) => { setCurrentDate(d); setScheduleViewMode('daily'); }} onMoveEntry={handleMoveEntry} onSelectShip={setSelectedShip} />
                     )}
                   </Card>
                 </div>
 
                 <div className="xl:col-span-1 flex flex-col space-y-6">
-                  {selectedShip ? (
+                  {editDraft ? (
                     <Card className="p-6 border-none shadow-2xl bg-slate-900 text-white">
-                      <div className="flex justify-between items-start mb-6 border-b border-slate-800 pb-4">
-                        <div>
-                          <p className="text-[10px] text-indigo-400 font-black uppercase mb-1 tracking-widest">Ship Details</p>
-                          <h3 className="font-black text-xl">{selectedShip.shipName}</h3>
-                        </div>
-                        <button onClick={() => setSelectedShip(null)} className="text-slate-400 hover:text-white transition-colors">×</button>
+                      <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
+                        <p className="text-[11px] text-indigo-400 font-black uppercase tracking-widest">{editDraft.id ? '予定を編集' : '新規追加'}</p>
+                        <button onClick={() => setSelectedShip(null)} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
                       </div>
-                      <div className="space-y-4 text-sm">
+                      <div className="space-y-3 text-sm">
+                        <label className="block">
+                          <span className="text-[10px] text-slate-400 font-bold">船名</span>
+                          <input value={editDraft.shipName} onChange={e => setEditDraft({ ...editDraft, shipName: e.target.value })} placeholder="例：第18住若丸" className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 ring-indigo-500" />
+                        </label>
                         <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Berth</p>
-                            <p className="font-black text-sm bg-slate-800 px-3 py-2 rounded-lg text-indigo-300">{selectedShip.berthName}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Status</p>
-                            <p className="font-black text-sm bg-slate-800 px-3 py-2 rounded-lg text-emerald-300">{selectedShip.status}</p>
-                          </div>
+                          <label className="block">
+                            <span className="text-[10px] text-slate-400 font-bold">日付</span>
+                            <input type="date" value={editDraft.date} onChange={e => setEditDraft({ ...editDraft, date: e.target.value })} className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 ring-indigo-500" />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] text-slate-400 font-bold">バース</span>
+                            <select value={editDraft.berthName} onChange={e => setEditDraft({ ...editDraft, berthName: e.target.value })} className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 ring-indigo-500">
+                              <option value="">選択</option>
+                              {(() => {
+                                const BERTHS = ['1-1', '1-2', '1-3A', '1-3B', '1-4', '1-5', '1-6', '1-7', '1-8', '2-1', '2-2', '2-3', '2-4(西)', '2-4(東)', '3-1(西)', '3-1(東)', '3-4', '4-1', '4-2', '5-1', '5-2', '5-3', '5-4'];
+                                const opts = [...BERTHS];
+                                if (editDraft.berthName && !BERTHS.includes(editDraft.berthName)) opts.push(editDraft.berthName);
+                                return opts.map(b => <option key={b} value={b}>{b}</option>);
+                              })()}
+                            </select>
+                          </label>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Time</p>
-                          <p className="font-mono text-lg font-black">{selectedShip.eta} - {selectedShip.etd}</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="block">
+                            <span className="text-[10px] text-slate-400 font-bold">入港(ETA)</span>
+                            <input value={editDraft.eta} onChange={e => setEditDraft({ ...editDraft, eta: e.target.value })} placeholder="08:00" className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white font-mono outline-none focus:ring-2 ring-indigo-500" />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] text-slate-400 font-bold">出港(ETD)</span>
+                            <input value={editDraft.etd} onChange={e => setEditDraft({ ...editDraft, etd: e.target.value })} placeholder="17:00" className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white font-mono outline-none focus:ring-2 ring-indigo-500" />
+                          </label>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Cargo</p>
-                          <p className="text-slate-200 font-medium bg-slate-800/50 p-3 rounded-xl border border-slate-800">{selectedShip.cargo}</p>
-                        </div>
-                        <div className="flex justify-between items-center bg-slate-800/50 p-3 rounded-xl border border-slate-800">
-                          <div className="text-slate-300 font-bold">配車進捗</div>
-                          <div className="text-emerald-300 font-black">{selectedShip.trucksArrived} / {selectedShip.trucksPlanned}</div>
-                        </div>
+                        <label className="block">
+                          <span className="text-[10px] text-slate-400 font-bold">貨物</span>
+                          <input value={editDraft.cargo} onChange={e => setEditDraft({ ...editDraft, cargo: e.target.value })} placeholder="未定" className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 ring-indigo-500" />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] text-slate-400 font-bold">状況</span>
+                          <select value={editDraft.status} onChange={e => setEditDraft({ ...editDraft, status: e.target.value as BerthSchedule['status'] })} className="w-full mt-1 bg-slate-800 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 ring-indigo-500">
+                            <option value="予定">予定</option>
+                            <option value="作業中">作業中</option>
+                            <option value="完了">完了</option>
+                            <option value="未定">未定</option>
+                          </select>
+                        </label>
                       </div>
+                      <div className="flex gap-2 mt-5">
+                        <button onClick={() => upsertScheduleEntry(editDraft)} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-black py-2.5 rounded-xl transition-colors">保存して反映</button>
+                        {editDraft.id ? (
+                          <button onClick={() => deleteScheduleEntry(editDraft)} className="px-4 bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl transition-colors">削除</button>
+                        ) : null}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-3 leading-relaxed">※ 保存すると、日付・バースの正しい位置へ自動で移動します。</p>
                     </Card>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center p-12 text-center border-4 border-dashed border-slate-200 rounded-[2.5rem] text-slate-400">
                       <div className="bg-white p-6 rounded-full shadow-lg mb-6"><FileText size={40} className="text-slate-200" /></div>
                       <h4 className="font-black text-slate-400">日付/船を選択</h4>
-                      <p className="text-xs mt-2 font-bold leading-relaxed">カレンダーやタイムラインから選択すると詳細が表示されます</p>
+                      <p className="text-xs mt-2 font-bold leading-relaxed">カレンダーやタイムラインから選ぶと編集できます。<br />新しい予定は下のボタンから追加できます。</p>
+                      <button onClick={startNewEntry} className="mt-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black px-5 py-2.5 rounded-xl transition-colors">＋ 新規追加</button>
                     </div>
                   )}
                 </div>
