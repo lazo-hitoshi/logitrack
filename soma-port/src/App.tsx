@@ -270,8 +270,9 @@ const MonthlyCalendarView = ({
   );
 };
 
-const DailyScheduleView = ({ schedules, onSelect, date }: { schedules: BerthSchedule[], onSelect: (schedule: BerthSchedule) => void, date: string }) => {
+const DailyScheduleView = ({ schedules, onSelect, date, onMoveBerth }: { schedules: BerthSchedule[], onSelect: (schedule: BerthSchedule) => void, date: string, onMoveBerth?: (entryId: string, toBerth: string) => void }) => {
   const [showOnlyActive, setShowOnlyActive] = useState(false);
+  const [dragOverBerth, setDragOverBerth] = useState<string | null>(null);
   const hours = [0, 4, 8, 12, 16, 20, 24];
   const berthGroups = [
     { name: '1号埠頭', berths: ['1-1', '1-2', '1-3A', '1-3B', '1-4', '1-5', '1-6', '1-7', '1-8'] },
@@ -328,15 +329,28 @@ const DailyScheduleView = ({ schedules, onSelect, date }: { schedules: BerthSche
                     const ship = schedules.find(s => s.berthName === berth);
                     if (showOnlyActive && !ship) return null;
                     return (
-                      <div key={berth} className={`flex items-center group relative h-12 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'}`}>
+                      <div
+                        key={berth}
+                        onDragOver={(e) => { if (onMoveBerth) { e.preventDefault(); setDragOverBerth(berth); } }}
+                        onDragLeave={() => setDragOverBerth((prev) => (prev === berth ? null : prev))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragOverBerth(null);
+                          const id = e.dataTransfer.getData('text/plain');
+                          if (id && onMoveBerth) onMoveBerth(id, berth);
+                        }}
+                        className={`flex items-center group relative h-12 ${dragOverBerth === berth ? 'bg-emerald-50 ring-2 ring-inset ring-emerald-400' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'}`}
+                      >
                         <div className="w-24 flex-shrink-0 border-r border-slate-200 h-full flex items-center pl-4 text-[10px] font-bold text-slate-500">{berth}</div>
                         <div className="flex-1 relative h-full">
                           {hours.map(h => <div key={h} className="absolute top-0 bottom-0 border-l border-slate-100" style={{ left: `${(h / 24) * 100}%` }}></div>)}
                           {ship && (
                             <button
+                              draggable={!!onMoveBerth && !!ship.id}
+                              onDragStart={(e) => { if (ship.id) { e.dataTransfer.setData('text/plain', ship.id); e.dataTransfer.effectAllowed = 'move'; } }}
                               onClick={() => onSelect(ship)}
-                              title={`${ship.shipName} ${ship.eta}-${ship.etd} ${ship.cargo}`}
-                              className={`absolute top-1.5 bottom-1.5 rounded-lg shadow-sm border text-left px-3 flex flex-col justify-center transition-all hover:scale-[1.02] z-10 overflow-hidden ${ship.status === '作業中' ? 'bg-indigo-600 text-white border-indigo-700' : ship.status === '完了' ? 'bg-slate-200 border-slate-300 text-slate-600' : 'bg-emerald-500 text-white border-emerald-600'}`}
+                              title={`${ship.shipName} ${ship.eta}-${ship.etd} ${ship.cargo}（ドラッグで別バースへ移動）`}
+                              className={`absolute top-1.5 bottom-1.5 rounded-lg shadow-sm border text-left px-3 flex flex-col justify-center transition-all hover:scale-[1.02] z-10 overflow-hidden cursor-grab active:cursor-grabbing ${ship.status === '作業中' ? 'bg-indigo-600 text-white border-indigo-700' : ship.status === '完了' ? 'bg-slate-200 border-slate-300 text-slate-600' : 'bg-emerald-500 text-white border-emerald-600'}`}
                               style={{ left: `${getPosition(ship.eta)}%`, width: `${Math.max(10, getDuration(ship.eta, ship.etd))}%` }}
                             >
                               <div className="font-bold text-[10px] truncate leading-tight">{ship.shipName}</div>
@@ -1026,6 +1040,37 @@ export default function App() {
     setCurrentDate(toDate);
   };
 
+  // 日次画面でバース行へドラッグ移動（バースを別の番号へ付け替える）
+  const handleMoveBerth = async (entryId: string, toBerth: string) => {
+    const entry = effectiveScheduleData.find((s) => s.id === entryId);
+    if (!entry || !entry.id || !toBerth || entry.berthName === toBerth) return;
+    const fromBerth = entry.berthName;
+    const updated: BerthSchedule = { ...entry, berthName: toBerth };
+    const now = new Date();
+    const log: MoveLog = {
+      id: `log-${now.getTime()}-${Math.floor(Math.random() * 1000)}`,
+      shipName: entry.shipName,
+      fromDate: entry.date,
+      toDate: entry.date,
+      fromBerth,
+      toBerth,
+      changedAt: now.toISOString()
+    };
+    setLocalScheduleData((prev) => {
+      const exists = prev.some((p) => p.id === entryId);
+      return exists ? prev.map((p) => (p.id === entryId ? updated : p)) : [...prev, updated];
+    });
+    setMoveLogs((prev) => [log, ...prev].slice(0, 200));
+    if (db && user) {
+      const sref = collection(db, 'artifacts', appId, 'public', 'data', 'schedules');
+      const lref = collection(db, 'artifacts', appId, 'public', 'data', 'scheduleLogs');
+      const batch = writeBatch(db);
+      batch.set(doc(sref, String(entry.id)), { ...updated });
+      batch.set(doc(lref, log.id), { ...log });
+      await batch.commit();
+    }
+  };
+
   const dailySchedule = useMemo(() => effectiveScheduleData.filter(s => s.date === currentDate), [currentDate, effectiveScheduleData]);
 
   // 船を選択したら編集フォームの下書きを初期化する
@@ -1522,7 +1567,12 @@ export default function App() {
                           <div key={log.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs">
                             <div className="min-w-0">
                               <div className="font-black text-slate-800 truncate">{log.shipName || '（無名）'}</div>
-                              <div className="text-slate-500 font-mono mt-0.5">{log.fromDate} <span className="text-indigo-500 font-bold">→</span> {log.toDate}</div>
+                              {log.fromDate !== log.toDate && (
+                                <div className="text-slate-500 font-mono mt-0.5">📅 {log.fromDate} <span className="text-indigo-500 font-bold">→</span> {log.toDate}</div>
+                              )}
+                              {log.fromBerth && log.toBerth && log.fromBerth !== log.toBerth && (
+                                <div className="text-slate-500 font-mono mt-0.5">⚓ {log.fromBerth} <span className="text-indigo-500 font-bold">→</span> {log.toBerth}</div>
+                              )}
                             </div>
                             <div className="text-[10px] text-slate-400 font-bold whitespace-nowrap ml-2">
                               {(() => { try { return new Date(log.changedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
@@ -1539,7 +1589,7 @@ export default function App() {
                 <div className="xl:col-span-3">
                   <Card className="p-6 border-none shadow-xl bg-white/80 backdrop-blur-sm h-full">
                     {scheduleViewMode === 'daily' ? (
-                      <DailyScheduleView schedules={dailySchedule} onSelect={setSelectedShip} date={currentDate} />
+                      <DailyScheduleView schedules={dailySchedule} onSelect={setSelectedShip} date={currentDate} onMoveBerth={handleMoveBerth} />
                     ) : (
                       <MonthlyCalendarView schedules={effectiveScheduleData} currentDate={currentDate} onDateSelect={(d) => { setCurrentDate(d); setScheduleViewMode('daily'); }} onMoveEntry={handleMoveEntry} onSelectShip={setSelectedShip} />
                     )}
