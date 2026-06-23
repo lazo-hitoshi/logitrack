@@ -900,8 +900,11 @@ export default function App() {
     });
     const init = async () => {
       try {
+        // 既にログイン済み（本体アプリのメール/パスワード等）ならそれを使う。匿名化しない。
+        if (auth.currentUser) {
+          // noop
         // @ts-ignore
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        } else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           // @ts-ignore
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {

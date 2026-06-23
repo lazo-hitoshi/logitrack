@@ -574,9 +574,19 @@ function initializeApplication() {
                 console.warn('[Firestore] firebase SDK が読み込まれていません。index.html の script を確認してください。');
                 return false;
             }
-            const cfg = window.firebaseConfig;
+            // インラインスクリプトが拡張機能/CSP等で無効化されても初期化できるよう、
+            // 公開情報である設定をここにもフォールバックとして持つ。
+            const cfg = window.firebaseConfig || {
+                apiKey: "AIzaSyDDi3s1qJnNL_k8FtPPfAACCsCorj1XL1g",
+                authDomain: "unkou-final.firebaseapp.com",
+                projectId: "unkou-final",
+                storageBucket: "unkou-final.firebasestorage.app",
+                messagingSenderId: "841308334866",
+                appId: "1:841308334866:web:dea92056a618686a5561cb"
+            };
+            window.firebaseConfig = cfg;
             if (!cfg || !cfg.projectId || !cfg.apiKey || cfg.apiKey === 'YOUR_API_KEY') {
-                console.warn('[Firestore] firebaseConfig が未設定です。index.html の window.firebaseConfig を設定してください。');
+                console.warn('[Firestore] firebaseConfig が未設定です。');
                 return false;
             }
             if (!firebase.apps.length) {
@@ -589,6 +599,74 @@ function initializeApplication() {
         } catch (e) {
             console.error('[Firestore] init error:', e);
             return false;
+        }
+    }
+
+    // --- 認証ゲート（メール＋パスワードのログイン必須） ---
+    let firebaseAuth = null;
+    let currentAuthUser = null;
+    function initAuthGate() {
+        try {
+            if (typeof firebase === 'undefined' || !firebase.auth) {
+                console.warn('[Auth] firebase-auth SDK が読み込まれていません。');
+                return;
+            }
+            // Firebaseアプリの初期化を保証（initFirestoreが先に走らない場合の保険）
+            try {
+                if (firebase.apps && firebase.apps.length === 0 && window.firebaseConfig) {
+                    firebase.initializeApp(window.firebaseConfig);
+                }
+            } catch (_) { /* 既に初期化済みなら無視 */ }
+            firebaseAuth = firebase.auth();
+            const overlay = document.getElementById('login-overlay');
+            // 変形(transform)を持つ親の中にあると position:fixed が効かず 0x0 になるため、body直下へ移す
+            if (overlay && overlay.parentElement !== document.body) {
+                document.body.appendChild(overlay);
+            }
+            const logoutBtn = document.getElementById('logout-btn');
+            const errEl = document.getElementById('login-error');
+
+            firebaseAuth.onAuthStateChanged(function (user) {
+                currentAuthUser = user || null;
+                // 匿名ログイン（soma-portが作るもの）はログインとみなさない。
+                // メール＋パスワードでログインした正規ユーザーのみ通す。
+                if (user && !user.isAnonymous) {
+                    if (overlay) overlay.style.display = 'none';
+                    if (logoutBtn) logoutBtn.style.display = '';
+                    // ログイン完了後に Firestore をロードして画面を更新
+                    try {
+                        ensureFirestoreLoadedOnce().catch(function () {}).finally(function () {
+                            try { if (typeof initializeApp === 'function') initializeApp(); } catch (_) {}
+                        });
+                    } catch (_) {}
+                } else {
+                    if (overlay) overlay.style.display = 'flex';
+                    if (logoutBtn) logoutBtn.style.display = 'none';
+                }
+            });
+
+            const form = document.getElementById('login-form');
+            if (form) {
+                form.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    if (errEl) errEl.textContent = '';
+                    const email = ((document.getElementById('login-email') || {}).value || '').trim();
+                    const pw = (document.getElementById('login-password') || {}).value || '';
+                    try {
+                        await firebaseAuth.signInWithEmailAndPassword(email, pw);
+                    } catch (err) {
+                        if (errEl) errEl.textContent = 'ログインに失敗しました。メール・パスワードをご確認ください。';
+                        console.warn('[Auth] login error', err && err.code);
+                    }
+                });
+            }
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', function () {
+                    try { firebaseAuth.signOut(); } catch (_) {}
+                });
+            }
+        } catch (e) {
+            console.error('[Auth] initAuthGate error:', e);
         }
     }
 
@@ -636,6 +714,8 @@ function initializeApplication() {
 
     async function ensureFirestoreLoadedOnce() {
         if (!firestoreEnabled || !firestoreDb) return false;
+        // 認証ゲートが有効なときは、正規ログイン前（未ログイン or 匿名）はFirestoreを読まない
+        if (firebaseAuth && (!firebaseAuth.currentUser || firebaseAuth.currentUser.isAnonymous)) return false;
         if (firestoreLoadPromise) return firestoreLoadPromise;
 
         firestoreLoadPromise = (async () => {
@@ -775,6 +855,8 @@ function initializeApplication() {
 
     // Firestore初期化（設定が入っていれば有効化）
     initFirestore();
+    // 認証ゲート（ログイン必須）を起動
+    initAuthGate();
 
     function saveState() {
         localStorage.setItem('dump_truck_system_state', JSON.stringify(state));
